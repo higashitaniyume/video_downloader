@@ -197,7 +197,7 @@ class MediaDownloader:
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.proxy = proxy.strip()
         if cache_dir is None:
-            cache_dir = Path.home() / ".video_downloader" / "cache"
+            cache_dir = Path.cwd() / "cache"
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         # 复用机器人的下载管理器处理 dash:/m3u8: 等复杂流

@@ -18,9 +18,9 @@
 - **清晰度可配置**：B 站解析与 yt-dlp 兜底平台（YouTube 等）可统一限制最高清晰度
   （自动 / 4K / 1080P / 720P / 480P / 360P，GUI 设置或 CLI `--quality`）
 - **GUI 设置**：可在界面里配置全局代理（解析/下载全程生效，含测试按钮）、B 站 Cookie 与最高清晰度，
-  配置自动保存（`~/.video_downloader/config.json`），内置「如何获取 Cookie」图文指引
-- **B 站扫码登录**：设置里扫码即登录，凭据自动保存（`~/.video_downloader/bilibili_credentials.json`），
-  无需手动复制 Cookie，下次启动免登录
+  配置自动保存到程序当前目录（`config.json`），内置「如何获取 Cookie」图文指引
+- **B 站扫码登录**：设置里扫码即登录，凭据自动保存（当前目录 `bilibili_credentials.json`），
+  无需手动复制 Cookie，下次启动免登录；配置/凭据/下载缓存都在当前目录，整个工具可随文件夹搬移
   
   <img width="582" height="792" alt="image" src="https://github.com/user-attachments/assets/7ed9bf9f-6c94-4d42-ba04-2633b5becf00" />
 
@@ -115,7 +115,7 @@ app/
   engine.py       解析引擎：平台路由与并发解析 → ParseResult
   ydl.py          通用站点引擎与下载器（格式档位精选、进度钩子、ffmpeg 合并）
   downloader.py   直链下载器：流式下载（进度）+ DASH/HLS 处理
-  config.py       应用配置持久化（代理、Cookie → ~/.video_downloader/config.json）
+  config.py       应用配置持久化（代理、Cookie、清晰度 → 当前目录 config.json）
   theme.py        UI 字体工具（使用系统默认字体）
   settings_dialog.py  设置窗口（代理 + Cookie + 扫码登录 + 获取方法说明）
   gui.py          图形界面

@@ -1,15 +1,40 @@
 """应用配置：代理、Cookie 与清晰度等 GUI 设置的持久化。
 
-配置文件位于 ~/.video_downloader/config.json（与下载缓存同级目录）。
+配置文件放在程序当前目录（config.json），扫码登录凭据与下载缓存也在当前目录，
+整个工具可随文件夹一起移动使用。
 """
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-CONFIG_DIR = Path.home() / ".video_downloader"
+CONFIG_DIR = Path.cwd()
 CONFIG_FILE = CONFIG_DIR / "config.json"
+
+# 旧版本配置目录（~/.video_downloader）：首次运行时自动迁移到当前目录
+_LEGACY_CONFIG_DIR = Path.home() / ".video_downloader"
+
+
+def _migrate_file(new_path: Path, legacy_name: str) -> None:
+    """新位置不存在但旧位置有同名文件时，复制一份过去（保留旧文件）。"""
+    if new_path.exists():
+        return
+    legacy = _LEGACY_CONFIG_DIR / legacy_name
+    if not legacy.exists():
+        return
+    try:
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(legacy, new_path)
+    except OSError:
+        pass
+
+
+def migrate_legacy_config() -> None:
+    """把旧位置（~/.video_downloader）的配置与扫码凭据迁移到当前目录。"""
+    _migrate_file(CONFIG_FILE, "config.json")
+    _migrate_file(CONFIG_DIR / "bilibili_credentials.json", "bilibili_credentials.json")
 
 # ── 清晰度档位 ──────────────────────────────────────────
 # 配置键 → (B 站 qn 上限, yt-dlp 最大高度)：
@@ -61,6 +86,7 @@ class AppConfig:
     @classmethod
     def load(cls) -> "AppConfig":
         """从磁盘加载配置；文件缺失或损坏时返回默认配置。"""
+        migrate_legacy_config()
         try:
             data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
         except (OSError, ValueError):

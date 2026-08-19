@@ -31,9 +31,9 @@ DEFAULT_UA = (
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )
 
-# B 站扫码登录凭据文件（GUI 与 CLI 共享，与 ~/.video_downloader/config.json 同级）
+# B 站扫码登录凭据文件（GUI 与 CLI 共享，放在程序当前目录，随工具一起移动）
 DEFAULT_BILIBILI_CREDENTIAL_PATH = str(
-    Path.home() / ".video_downloader" / "bilibili_credentials.json"
+    Path.cwd() / "bilibili_credentials.json"
 )
 
 
@@ -145,7 +145,10 @@ def build_parser_manager(
         tiktok_use_proxy: 是否通过代理访问 TikTok。
         tiktok_proxy_url: 代理地址，形如 "http://127.0.0.1:7890"。
     """
-    from .config import quality_to_bilibili_qn
+    from .config import migrate_legacy_config, quality_to_bilibili_qn
+
+    # 首次运行时把旧位置（~/.video_downloader）的配置/凭据迁移到当前目录
+    migrate_legacy_config()
 
     # 启用鉴权运行时的条件：手动配置了 Cookie，或本地存在扫码登录凭据文件。
     # 之后（同会话内）扫码登录成功时凭据会写入该实例，无需重建引擎即生效。
