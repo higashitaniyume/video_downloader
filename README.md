@@ -6,7 +6,8 @@
 支持国内主流平台（B站、抖音、快手、微博、小红书、头条、闲鱼、小黑盒、TikTok、Twitter/X），
 也支持 YouTube、SoundCloud、Instagram、Vimeo、网易云音乐等海外站点 —— 以及更多，
 解析能力覆盖 1900+ 平台，大部分无需登录即可使用。
-<img width="1102" height="792" alt="image" src="https://github.com/user-attachments/assets/91e07cef-9d91-45fb-a190-f9f9bc527a92" />
+<img width="1920" height="1152" alt="image" src="https://github.com/user-attachments/assets/5547db3c-bde3-446a-81f9-a986293eb8b6" />
+
 
 
 ## 功能特性
