@@ -116,17 +116,19 @@ class ResultCard(ctk.CTkFrame):
             )
             hint.grid(row=2, column=1, columnspan=2, sticky="nw", padx=(0, 8))
 
-        # 媒体勾选行
+        # 媒体勾选行（每行最多 4 个，自动换行）
         checkbox_frame = ctk.CTkFrame(self, fg_color="transparent")
         checkbox_frame.grid(row=3, column=1, columnspan=2, sticky="w",
                             padx=(0, 8), pady=(6, 0))
         for col, item in enumerate(result.items):
+            row, inner_col = divmod(col, 4)
             box = ctk.CTkCheckBox(checkbox_frame,
                                   text=item.name or f"{item.kind} {item.index}",
                                   font=font(13),
                                   checkbox_width=20, checkbox_height=20)
             box.select()
-            box.grid(row=0, column=col, padx=(0, 12))
+            box.grid(row=row, column=inner_col, sticky="w",
+                     padx=(0, 12), pady=(2, 0))
             self._checkboxes.append((item, box))
 
         # 底部：下载按钮 + 进度条 + 状态
@@ -369,7 +371,9 @@ class MediaToolApp(ctk.CTk):
     def _build_engine(self) -> ParseEngine:
         return ParseEngine(bilibili_cookie=self.config.bilibili_cookie,
                            quality=self.config.quality,
-                           proxy=self.config.proxy_url)
+                           proxy=self.config.proxy_url,
+                           ydl_cookies_from_browser=self.config.ydl_cookies_from_browser,
+                           ydl_cookies_file=self.config.ydl_cookies_file)
 
     def _open_settings(self) -> None:
         SettingsDialog(self, self.config, lambda: self.engine,
@@ -430,7 +434,11 @@ class MediaToolApp(ctk.CTk):
 
     def _ensure_downloader(self, out_dir: Path) -> MediaDownloader:
         if self._downloader is None or self._downloader.out_dir != out_dir:
-            self._downloader = MediaDownloader(out_dir, proxy=self.config.proxy_url)
+            self._downloader = MediaDownloader(
+                out_dir, proxy=self.config.proxy_url,
+                ydl_cookies_from_browser=self.config.ydl_cookies_from_browser,
+                ydl_cookies_file=self.config.ydl_cookies_file,
+            )
             self._out_dir = out_dir
         return self._downloader
 

@@ -73,11 +73,16 @@ class AppConfig:
     quality: 清晰度档位，取值见 QUALITY_PRESETS（如 "auto"/"1080p"/"720p"）。
         对 B 站解析生效（限制最高画质），也作用于 yt-dlp 兜底平台
         （YouTube 等可自选清晰度的平台，限制展示的最高分辨率）。
+    ydl_cookies_from_browser: 读取浏览器已登录 Cookie（"edge"/"chrome"/"firefox" 等），
+        用于 Instagram 等需要登录的 yt-dlp 兜底平台；留空表示不启用。
+    ydl_cookies_file: cookies.txt（Netscape 格式）文件路径，作用同上。
     """
 
     proxy_url: str = ""
     bilibili_cookie: str = ""
     quality: str = DEFAULT_QUALITY
+    ydl_cookies_from_browser: str = ""
+    ydl_cookies_file: str = ""
 
     @property
     def proxy_enabled(self) -> bool:
@@ -95,6 +100,9 @@ class AppConfig:
             proxy_url=str(data.get("proxy_url", "") or "").strip(),
             bilibili_cookie=str(data.get("bilibili_cookie", "") or "").strip(),
             quality=str(data.get("quality", DEFAULT_QUALITY) or DEFAULT_QUALITY).strip().lower(),
+            ydl_cookies_from_browser=str(
+                data.get("ydl_cookies_from_browser", "") or "").strip().lower(),
+            ydl_cookies_file=str(data.get("ydl_cookies_file", "") or "").strip(),
         )
 
     def save(self) -> None:

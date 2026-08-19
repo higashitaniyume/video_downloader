@@ -193,6 +193,8 @@ class ParseEngine:
         tiktok_proxy_url: str = "",
         ydl_enabled: bool = True,
         ydl_proxy: str = "",
+        ydl_cookies_from_browser: str = "",
+        ydl_cookies_file: str = "",
     ):
         self.timeout = timeout
         self.proxy = proxy.strip()
@@ -216,7 +218,10 @@ class ParseEngine:
             from .ydl import YdlEngine
             self._ydl_engine = YdlEngine(
                 timeout=timeout, proxy=ydl_proxy,
-                max_height=quality_to_max_height(self.quality))
+                max_height=quality_to_max_height(self.quality),
+                cookies_from_browser=ydl_cookies_from_browser,
+                cookies_file=ydl_cookies_file,
+            )
 
     def extract_links(self, text: str) -> list[str]:
         """同步提取文本中的可解析链接（按出现顺序、去重）。"""
@@ -247,11 +252,12 @@ class ParseEngine:
             for url in extract_all_urls(text):
                 if url in covered:
                     continue
-                ydl_result = await asyncio.to_thread(self._ydl_engine.extract, url)
+                ydl_result, ydl_error = await asyncio.to_thread(
+                    self._ydl_engine.extract, url)
                 if ydl_result is None:
                     results.append(ParseResult(
                         url=url, platform="yt-dlp", parser_name="yt-dlp",
-                        error="yt-dlp 未能解析该链接",
+                        error=ydl_error or "yt-dlp 未能解析该链接",
                     ))
                 else:
                     results.append(ydl_result)

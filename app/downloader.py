@@ -195,10 +195,14 @@ class MediaDownloader:
         *,
         max_video_size_mb: float = 0.0,
         proxy: str = "",
+        ydl_cookies_from_browser: str = "",
+        ydl_cookies_file: str = "",
     ):
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.proxy = proxy.strip()
+        self.ydl_cookies_from_browser = (ydl_cookies_from_browser or "").strip().lower()
+        self.ydl_cookies_file = (ydl_cookies_file or "").strip()
         if cache_dir is None:
             cache_dir = Path.cwd() / "cache"
         self.cache_dir = Path(cache_dir)
@@ -380,7 +384,11 @@ class MediaDownloader:
                       progress: Optional[ProgressCallback] = None,
                       control: Optional[DownloadControl] = None) -> DownloadSummary:
         from .ydl import YdlDownloader
-        downloader = YdlDownloader(self.out_dir, proxy=self.proxy)
+        downloader = YdlDownloader(
+            self.out_dir, proxy=self.proxy,
+            cookies_from_browser=self.ydl_cookies_from_browser,
+            cookies_file=self.ydl_cookies_file,
+        )
         return downloader.download_result_sync(result, result.items, progress, control)
 
     def download_result_sync(

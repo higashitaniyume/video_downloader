@@ -53,11 +53,14 @@ class SettingsDialog(ctk.CTkToplevel):
         self._ui_post = ui_post  # 工作线程投递 UI 更新到主线程的通道
 
         self.title("设置")
-        self.geometry("580x760")
+        self.geometry("580x940")
         self.resizable(False, False)
         self.transient(master)
         self.grab_set()
         self.update_idletasks()
+        max_h = self.winfo_screenheight() - 80
+        if self.winfo_height() > max_h:
+            self.geometry(f"580x{max_h}")
         x = master.winfo_rootx() + (master.winfo_width() - self.winfo_width()) // 2
         y = master.winfo_rooty() + (master.winfo_height() - self.winfo_height()) // 2
         self.geometry(f"+{max(0, x)}+{max(0, y)}")
@@ -147,12 +150,50 @@ class SettingsDialog(ctk.CTkToplevel):
             font=font(11), text_color=("gray40", "gray60"),
             anchor="w").grid(row=10, column=0, sticky="w", padx=18, pady=(4, 0))
 
-        # ── B 站扫码登录 ─────────────────────────────
-        ctk.CTkLabel(self, text="B 站扫码登录", font=font(14, "bold"),
+        # ── yt-dlp Cookie（Instagram 等需要登录的平台）──────────
+        ctk.CTkLabel(self, text="Instagram 等平台登录（yt-dlp Cookie，可选）",
+                     font=font(14, "bold"),
                      anchor="w").grid(row=11, column=0, sticky="w",
                                       padx=18, pady=(18, 4))
+        ydl_row = ctk.CTkFrame(self, fg_color="transparent")
+        ydl_row.grid(row=12, column=0, sticky="ew", padx=18, pady=(4, 0))
+        ydl_row.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(ydl_row, text="读取浏览器 Cookie", font=font(13),
+                     anchor="w").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        self.ydl_browser_menu = ctk.CTkOptionMenu(
+            ydl_row, values=["禁用", "Edge", "Chrome", "Firefox"], font=font(12),
+            width=150, height=28, anchor="w")
+        browser_key = config.ydl_cookies_from_browser or ""
+        self.ydl_browser_menu.set(
+            {"edge": "Edge", "chrome": "Chrome", "firefox": "Firefox"}.get(
+                browser_key, "禁用"))
+        self.ydl_browser_menu.grid(row=0, column=1, sticky="e")
+
+        cookies_file_row = ctk.CTkFrame(self, fg_color="transparent")
+        cookies_file_row.grid(row=13, column=0, sticky="ew", padx=18, pady=(4, 0))
+        cookies_file_row.grid_columnconfigure(0, weight=1)
+        self.ydl_cookies_entry = ctk.CTkEntry(cookies_file_row, font=font(12))
+        if config.ydl_cookies_file:
+            self.ydl_cookies_entry.insert(0, config.ydl_cookies_file)
+        self.ydl_cookies_entry.grid(row=0, column=0, sticky="ew")
+        ctk.CTkButton(cookies_file_row, text="浏览…", width=60, height=26,
+                      font=font(12),
+                      command=self._on_browse_cookies).grid(row=0, column=1,
+                                                            padx=(6, 0))
+        ctk.CTkLabel(
+            self, text="读取浏览器已登录的 Cookie，或选择 cookies.txt（Netscape 格式）；"
+                       "适用于 Instagram 等需要登录的平台，解析与下载全程生效",
+            font=font(11), text_color=("gray40", "gray60"),
+            anchor="w", wraplength=520, justify="left").grid(row=14, column=0,
+                                                             sticky="w",
+                                                             padx=18, pady=(4, 0))
+
+        # ── B 站扫码登录 ─────────────────────────────
+        ctk.CTkLabel(self, text="B 站扫码登录", font=font(14, "bold"),
+                     anchor="w").grid(row=15, column=0, sticky="w",
+                                      padx=18, pady=(18, 4))
         login_row = ctk.CTkFrame(self, fg_color="transparent")
-        login_row.grid(row=12, column=0, sticky="ew", padx=18, pady=(4, 0))
+        login_row.grid(row=16, column=0, sticky="ew", padx=18, pady=(4, 0))
         login_row.grid_columnconfigure(1, weight=1)
         self.login_button = ctk.CTkButton(login_row, text="扫码登录", width=96,
                                           height=26, command=self._on_qr_login)
@@ -163,12 +204,12 @@ class SettingsDialog(ctk.CTkToplevel):
         ctk.CTkLabel(
             self, text="扫码登录后凭据自动保存到本地，下次启动免登录，比手动复制 Cookie 更稳定",
             font=font(11), text_color=("gray40", "gray60"),
-            anchor="w").grid(row=13, column=0, sticky="w", padx=18, pady=(4, 0))
+            anchor="w").grid(row=17, column=0, sticky="w", padx=18, pady=(4, 0))
         self._refresh_login_status()
 
         # ── 保存 / 取消 ──────────────────────────────
         bottom = ctk.CTkFrame(self, fg_color="transparent")
-        bottom.grid(row=14, column=0, sticky="ew", padx=18, pady=(22, 18))
+        bottom.grid(row=18, column=0, sticky="ew", padx=18, pady=(22, 18))
         bottom.grid_columnconfigure(0, weight=1)
         bottom.grid_columnconfigure(1, weight=1)
         ctk.CTkButton(bottom, text="取消", height=32,
@@ -224,6 +265,15 @@ class SettingsDialog(ctk.CTkToplevel):
         from tkinter import messagebox
         messagebox.showinfo("如何获取 Cookie", COOKIE_HELP, parent=self)
 
+    def _on_browse_cookies(self) -> None:
+        from tkinter import filedialog
+        chosen = filedialog.askopenfilename(
+            title="选择 cookies.txt", parent=self,
+            filetypes=[("cookies 文件", "*.txt"), ("所有文件", "*.*")])
+        if chosen:
+            self.ydl_cookies_entry.delete(0, "end")
+            self.ydl_cookies_entry.insert(0, chosen)
+
     # ── 保存 ──────────────────────────────────────
 
     # ── 扫码登录 ──────────────────────────────────
@@ -242,10 +292,13 @@ class SettingsDialog(ctk.CTkToplevel):
             (key for key, label in QUALITY_LABELS.items() if label == selected),
             DEFAULT_QUALITY,
         )
+        browser_map = {"Edge": "edge", "Chrome": "chrome", "Firefox": "firefox"}
         config = AppConfig(
             proxy_url=self.proxy_entry.get().strip() if self.proxy_switch.get() else "",
             bilibili_cookie=self.cookie_entry.get().strip(),
             quality=quality_key,
+            ydl_cookies_from_browser=browser_map.get(self.ydl_browser_menu.get(), ""),
+            ydl_cookies_file=self.ydl_cookies_entry.get().strip(),
         )
         self.destroy()
         self._on_save(config)

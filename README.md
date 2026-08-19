@@ -20,6 +20,8 @@
   （自动 / 4K / 1080P / 720P / 480P / 360P，GUI 设置或 CLI `--quality`）
 - **GUI 设置**：可在界面里配置全局代理（解析/下载全程生效，含测试按钮）、B 站 Cookie 与最高清晰度，
   配置自动保存到程序当前目录（`config.json`），内置「如何获取 Cookie」图文指引
+- **Instagram 等平台登录（yt-dlp Cookie）**：可在设置里读取浏览器已登录 Cookie
+  （Edge / Chrome / Firefox）或指定 cookies.txt，让 Instagram 等需要登录的平台也能解析下载
 - **B 站扫码登录**：设置里扫码即登录，凭据自动保存（当前目录 `bilibili_credentials.json`），
   无需手动复制 Cookie，下次启动免登录；配置/凭据/下载缓存都在当前目录，整个工具可随文件夹搬移
   
@@ -75,6 +77,10 @@ python main.py
   凭据自动保存、免手动复制 Cookie；登录态优先于手动配置的 Cookie。
 - **最高清晰度**：选择 B 站解析所选画质的上限（如 1080P）；对 YouTube 等 yt-dlp 兜底平台，
   解析结果只展示不高于该清晰度的档位。选「自动（最高可用）」则不限制。
+- **Instagram 等平台登录（yt-dlp Cookie）**：Instagram 等平台需要登录态才能解析。
+  可在「读取浏览器 Cookie」里选 Edge / Chrome / Firefox（需先在该浏览器登录过 Instagram），
+  或选择一份 cookies.txt（Netscape 格式，可用浏览器扩展如 Get cookies.txt 导出）；
+  解析与下载全程生效。
 
 ### CLI
 
@@ -87,12 +93,17 @@ python cli.py --quality 1080p --download "https://www.youtube.com/watch?v=xxx"
 # --quality 可选 auto/4k/1080p/720p/480p/360p（默认 auto=最高可用），B站与 yt-dlp 平台均生效
 python cli.py --proxy http://127.0.0.1:7890 --download "https://www.youtube.com/watch?v=xxx"
 # --proxy 全局代理（解析+下载）；旧参数 --ydl-proxy 仍可用，仅作用于 yt-dlp
+python cli.py --ydl-cookies-from-browser edge "https://www.instagram.com/p/xxx"
+python cli.py --ydl-cookies-file cookies.txt --download "https://www.instagram.com/p/xxx"
+# --ydl-cookies-* 读取浏览器已登录 Cookie / 指定 cookies.txt，用于 Instagram 等需要登录的平台
 ```
 
 ## 常见问题
 
 **Q: 某个链接解析失败/无法下载？**
 部分平台需要登录态（微博长视频、Twitter、Vimeo、Instagram），部分平台会风控数据中心/海外 IP。
+解析失败时界面/日志会显示具体原因；若提示需要登录 Cookie，可在设置里为 yt-dlp 配置
+浏览器 Cookie（`--ydl-cookies-from-browser edge`）或 cookies.txt（`--ydl-cookies-file cookies.txt`）。
 
 **Q: YouTube 解析成功但下载 403？**
 YouTube 对数据中心 IP 的下载请求直接拒绝，属平台风控。配置代理：
@@ -132,14 +143,15 @@ app/
   logging_setup.py  日志系统（→ <程序目录>/logs/，滚动保留 + 未捕获异常落盘）
   portable.py     便携运行支持（exe 打包后自动找到随包 ffmpeg）
   theme.py        UI 字体工具（使用系统默认字体）
-  settings_dialog.py  设置窗口（代理 + Cookie + 扫码登录 + 获取方法说明）
+  settings_dialog.py  设置窗口（代理 + Cookie + 扫码登录 + yt-dlp Cookie + 获取方法说明）
   gui.py          图形界面
 parser_core/      解析核心（内置各平台解析器与下载管理）
 ```
 
 ## 已知限制
 
-- 部分平台（微博长视频、Twitter、Vimeo、Instagram 等）需要登录态，解析或下载可能失败
+- 部分平台（微博长视频、Twitter、Vimeo、Instagram 等）需要登录态，解析或下载可能失败；
+  可在设置/CLI 中为 yt-dlp 配置浏览器 Cookie 或 cookies.txt 后重试
 - 数据中心/海外 IP 访问部分平台（YouTube 下载、SoundCloud、网易云音乐等）会被风控拒绝，
   可用 `--ydl-proxy` 配置代理
 - B 站 DASH 分离流无逐字节进度；音视频合并依赖系统 ffmpeg

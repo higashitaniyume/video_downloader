@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import logging
 import re
 import threading
 from pathlib import Path
@@ -17,11 +18,28 @@ from .control import DownloadControl, TaskCancelled
 from .engine import MediaItem, ParseResult
 from .common import DownloadSummary, DownloadedFile, sanitize_filename, unique_path
 
+logger = logging.getLogger(__name__)
+
 # 通用 URL 提取：去尾中文/英文标点
 _URL_RE = re.compile(r"https?://[^\s<>\"'\u3000]+")
 _TRAILING_PUNCT = re.compile(r"[，。！？；：、,.;:!?)\]}>”’]+$")
 
 MAX_VIDEO_FORMATS = 6
+
+# 支持的浏览器（yt-dlp cookiesfrombrowser 取值）与设置窗口文案的映射
+BROWSER_CHOICES = {"edge", "chrome", "firefox", "brave", "opera", "vivaldi", "whale"}
+
+
+def clean_ydl_error(msg: str) -> str:
+    """清理 yt-dlp 错误消息：去掉 ERROR: 前缀，并按需附上中文提示。"""
+    msg = (msg or "").strip()
+    if msg.startswith("ERROR:"):
+        msg = msg[len("ERROR:"):].strip()
+    if not msg:
+        return "yt-dlp 未能解析该链接"
+    if "cookie" in msg.lower():
+        msg += "（提示：该平台需要登录 Cookie，可在设置/CLI 中为 yt-dlp 配置浏览器 Cookie 或 cookies.txt 后重试）"
+    return msg
 
 
 def extract_all_urls(text: str) -> list[str]:
@@ -43,7 +61,8 @@ def _info_to_result(url: str, info: dict, max_height: int = 0) -> ParseResult:
     """
     platform = (info.get("extractor_key") or "ydl").lower()
 
-    # 精选展示档位：按高度去重（含音频的视频格式优先），最多 MAX_VIDEO_FORMATS 档
+    # 精选展示档位：按高度去重（含视频轨即算视频档，DASH 分离流的视频流
+    # 下载时自动补 bestaudio 合并），最多 MAX_VIDEO_FORMATS 档
     formats = info.get("formats") or [info]
     best_audio: Optional[dict] = None
     by_height: dict[int, dict] = {}
@@ -58,7 +77,8 @@ def _info_to_result(url: str, info: dict, max_height: int = 0) -> ParseResult:
             continue
         vcodec = fmt.get("vcodec") or ""
         acodec = fmt.get("acodec") or ""
-        if vcodec and vcodec != "none" and (acodec and acodec != "none"):
+        if vcodec and vcodec != "none":
+            # 视频档：有视频轨即可（Instagram 等 DASH 平台视频流无音轨）
             key = _video_key(fmt)
             if key and key not in by_height:
                 by_height[key] = fmt
@@ -67,9 +87,15 @@ def _info_to_result(url: str, info: dict, max_height: int = 0) -> ParseResult:
                 best_audio = fmt
 
     items: list[MediaItem] = []
-    for index, height in enumerate(sorted(by_height, reverse=True), start=1):
-        fmt = by_height[height]
-        label = fmt.get("format_note") or fmt.get("format") or f"{height}p"
+    for index, (height, fmt) in enumerate(
+        sorted(by_height.items(), key=lambda kv: kv[0], reverse=True)[:MAX_VIDEO_FORMATS],
+        start=1,
+    ):
+        note = fmt.get("format_note") or ""
+        if height:
+            label = note if note and "dash" not in note.lower() else f"{height}p"
+        else:
+            label = note or str(fmt.get("format_id") or "video")
         items.append(MediaItem(
             index=index,
             kind="video",
@@ -114,16 +140,22 @@ class YdlEngine:
     """yt-dlp 解析引擎：提取单个 URL 的元数据。
 
     max_height: 清晰度上限（像素高度），>0 时解析结果只保留不高于该高度的档位。
+    cookies_from_browser: 读取浏览器已登录 Cookie（如 "edge"/"chrome"/"firefox"），
+        用于 Instagram 等需要登录的平台；空字符串表示不启用。
+    cookies_file: cookies.txt（Netscape 格式）文件路径，作用同上。
     """
 
     def __init__(self, *, timeout: float = 60.0, proxy: str = "",
-                 max_height: int = 0):
+                 max_height: int = 0, cookies_from_browser: str = "",
+                 cookies_file: str = ""):
         self.timeout = timeout
         self.proxy = proxy
         try:
             self.max_height = max(0, int(max_height))
         except (TypeError, ValueError):
             self.max_height = 0
+        self.cookies_from_browser = (cookies_from_browser or "").strip().lower()
+        self.cookies_file = (cookies_file or "").strip()
 
     def _base_opts(self) -> dict:
         opts: dict = {
@@ -134,28 +166,45 @@ class YdlEngine:
         }
         if self.proxy:
             opts["proxy"] = self.proxy
+        if self.cookies_file:
+            if Path(self.cookies_file).is_file():
+                opts["cookies"] = self.cookies_file
+            else:
+                logger.warning("yt-dlp cookies 文件不存在，已忽略: %s", self.cookies_file)
+        if self.cookies_from_browser in BROWSER_CHOICES:
+            opts["cookiesfrombrowser"] = (self.cookies_from_browser,)
         return opts
 
-    def extract(self, url: str) -> Optional[ParseResult]:
-        """提取单个 URL。失败返回 None（错误信息由调用方包装）。"""
+    def extract(self, url: str) -> tuple[Optional[ParseResult], str]:
+        """提取单个 URL。
+
+        Returns:
+            (结果, 错误信息)：成功时错误信息为空字符串；失败时结果为 None，
+            错误信息为清理后的真实原因（含需要登录时的中文提示）。
+        """
         with yt_dlp.YoutubeDL(dict(self._base_opts(), skip_download=True)) as ydl:
             try:
                 info = ydl.extract_info(url, download=False)
-            except yt_dlp.utils.DownloadError:
-                return None
+            except yt_dlp.utils.DownloadError as exc:
+                return None, clean_ydl_error(str(exc))
+            except Exception as exc:  # noqa: BLE001 —— 兜底任何解析异常
+                return None, clean_ydl_error(str(exc))
         if not info:
-            return None
-        return _info_to_result(url, info, max_height=self.max_height)
+            return None, clean_ydl_error("")
+        return _info_to_result(url, info, max_height=self.max_height), ""
 
 
 class YdlDownloader:
     """yt-dlp 下载器：按所选 format_id 下载，yt-dlp 负责格式选择与合并。"""
 
-    def __init__(self, out_dir: Path, *, proxy: str = "", timeout: float = 60.0):
+    def __init__(self, out_dir: Path, *, proxy: str = "", timeout: float = 60.0,
+                 cookies_from_browser: str = "", cookies_file: str = ""):
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.proxy = proxy
         self.timeout = timeout
+        self.cookies_from_browser = (cookies_from_browser or "").strip().lower()
+        self.cookies_file = (cookies_file or "").strip()
 
     def _base_opts(self) -> dict:
         opts: dict = {
@@ -166,6 +215,13 @@ class YdlDownloader:
         }
         if self.proxy:
             opts["proxy"] = self.proxy
+        if self.cookies_file:
+            if Path(self.cookies_file).is_file():
+                opts["cookies"] = self.cookies_file
+            else:
+                logger.warning("yt-dlp cookies 文件不存在，已忽略: %s", self.cookies_file)
+        if self.cookies_from_browser in BROWSER_CHOICES:
+            opts["cookiesfrombrowser"] = (self.cookies_from_browser,)
         return opts
 
     def download_result_sync(

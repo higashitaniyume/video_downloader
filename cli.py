@@ -89,6 +89,13 @@ def main() -> None:
                         help="最高清晰度：B站解析与 yt-dlp 兜底平台（YouTube 等）生效（默认 auto=最高可用）")
     parser.add_argument("--proxy", default="", help="全局代理地址（解析+下载），如 http://127.0.0.1:7890")
     parser.add_argument("--ydl-proxy", default="", help="yt-dlp 兜底引擎的代理地址，如 http://127.0.0.1:7890")
+    parser.add_argument("--ydl-cookies-from-browser", default="",
+                        choices=["", "edge", "chrome", "firefox"],
+                        help="读取浏览器已登录 Cookie 供 yt-dlp 使用（edge/chrome/firefox），"
+                             "用于 Instagram 等需要登录的平台")
+    parser.add_argument("--ydl-cookies-file", default="",
+                        help="yt-dlp 使用的 cookies.txt（Netscape 格式）文件路径，"
+                             "用于 Instagram 等需要登录的平台")
     parser.add_argument("--no-ydl", action="store_true", help="禁用 yt-dlp 兜底（仅用 parser_core）")
     args = parser.parse_args()
 
@@ -107,6 +114,8 @@ def main() -> None:
         quality=args.quality,
         ydl_enabled=not args.no_ydl,
         proxy=proxy,
+        ydl_cookies_from_browser=args.ydl_cookies_from_browser,
+        ydl_cookies_file=args.ydl_cookies_file,
     )
     results = engine.parse_text_sync(text)
 
@@ -142,7 +151,11 @@ def main() -> None:
 
     if args.download:
         out_dir = Path(args.out)
-        downloader = MediaDownloader(out_dir, proxy=proxy)
+        downloader = MediaDownloader(
+            out_dir, proxy=proxy,
+            ydl_cookies_from_browser=args.ydl_cookies_from_browser,
+            ydl_cookies_file=args.ydl_cookies_file,
+        )
         try:
             asyncio.run(_download_all(downloader, results, out_dir))
         finally:
