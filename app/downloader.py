@@ -46,6 +46,24 @@ CONTENT_TYPE_EXT = {
     "audio/ogg": ".ogg",
 }
 
+# 已知媒体扩展名：目标文件名已带其中之一时不再推断
+KNOWN_EXTENSIONS = set(CONTENT_TYPE_EXT.values())
+
+# 抖音等 CDN 直链常把类型放在查询参数里（如 mime_type=video_mp4）
+_MIME_HINT_RE = re.compile(r"mime_type=(video|audio|image)_([a-z0-9]+)", re.IGNORECASE)
+_MIME_TYPE_EXT = {
+    "video_mp4": ".mp4",
+    "video_webm": ".webm",
+    "video_quicktime": ".mov",
+    "audio_mp4": ".m4a",
+    "audio_aac": ".aac",
+    "audio_mpeg": ".mp3",
+    "image_jpeg": ".jpg",
+    "image_png": ".png",
+    "image_webp": ".webp",
+    "image_gif": ".gif",
+}
+
 _INVALID_FILENAME_CHARS = re.compile(r'[\/:*?"<>|\x00-\x1f]')
 
 def sanitize_filename(name: str, max_len: int = 60) -> str:
@@ -79,7 +97,13 @@ def strip_media_prefix(url: str) -> str:
 def _ext_from_url(url: str) -> str:
     path = strip_media_prefix(url).split("?", 1)[0].split("#", 1)[0]
     _, ext = os.path.splitext(path)
-    return ext.lower() if ext else ""
+    if ext:
+        return ext.lower()
+    # 兜底：从查询参数 mime_type=video_mp4 等推断扩展名（抖音 CDN 常见）
+    m = _MIME_HINT_RE.search(url or "")
+    if m:
+        return _MIME_TYPE_EXT.get(f"{m.group(1)}_{m.group(2).lower()}", "")
+    return ""
 
 
 def _ext_from_content_type(content_type: str) -> str:
@@ -123,9 +147,14 @@ async def download_stream(
         async with session.get(strip_media_prefix(url), headers=request_headers) as resp:
             resp.raise_for_status()
             content_type = resp.headers.get("Content-Type", "")
-            if not dest.suffix:
+            # 无扩展名或现有"后缀"不是已知媒体扩展（如标题含点导致
+            # Path.suffix 误判成 .xxx_video1）时，按 Content-Type / URL 推断。
+            if dest.suffix.lower() not in KNOWN_EXTENSIONS:
                 ext = _ext_from_content_type(content_type) or _ext_from_url(url) or ".bin"
-                dest = dest.with_suffix(ext)
+                if dest.suffix:
+                    dest = dest.with_name(dest.name + ext)
+                else:
+                    dest = dest.with_suffix(ext)
                 tmp = dest.with_suffix(dest.suffix + ".part")
 
             total: Optional[int] = None
