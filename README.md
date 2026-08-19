@@ -156,3 +156,8 @@ parser_core/      解析核心（内置各平台解析器与下载管理）
   可用 `--ydl-proxy` 配置代理
 - B 站 DASH 分离流无逐字节进度；音视频合并依赖系统 ffmpeg
 - 抖音/快手等平台风控较严，频率过高可能触发验证
+
+## 鸣谢
+
+- 视频解析大部分逻辑基于[HIKARI_BOT_NEO](https://github.com/higashitaniyume/HIKARI_BOT_NEO)机器人的视频解析逻辑
+- yt-dlp基于[yt-dlp](https://github.com/yt-dlp/yt-dlp)
