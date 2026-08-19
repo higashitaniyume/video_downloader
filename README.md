@@ -6,6 +6,8 @@
 支持国内主流平台（B站、抖音、快手、微博、小红书、头条、闲鱼、小黑盒、TikTok、Twitter/X），
 也支持 YouTube、SoundCloud、Instagram、Vimeo、网易云音乐等海外站点 —— 以及更多，
 解析能力覆盖 1900+ 平台，大部分无需登录即可使用。
+<img width="1102" height="792" alt="image" src="https://github.com/user-attachments/assets/91e07cef-9d91-45fb-a190-f9f9bc527a92" />
+
 
 ## 功能特性
 
@@ -19,6 +21,9 @@
   配置自动保存（`~/.video_downloader/config.json`），内置「如何获取 Cookie」图文指引
 - **B 站扫码登录**：设置里扫码即登录，凭据自动保存（`~/.video_downloader/bilibili_credentials.json`），
   无需手动复制 Cookie，下次启动免登录
+  
+  <img width="582" height="792" alt="image" src="https://github.com/user-attachments/assets/7ed9bf9f-6c94-4d42-ba04-2633b5becf00" />
+
 
 ## 支持的平台
 
