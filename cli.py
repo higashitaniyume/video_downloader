@@ -80,6 +80,9 @@ def main() -> None:
     parser.add_argument("--out", default="downloads", help="下载输出目录（默认 downloads/）")
     parser.add_argument("--json", action="store_true", help="以 JSON 输出解析结果")
     parser.add_argument("--bilibili-cookie", default="", help="B站登录 Cookie（可选，解锁高清晰度）")
+    parser.add_argument("--quality", default="auto",
+                        choices=["auto", "4k", "1080p", "720p", "480p", "360p"],
+                        help="最高清晰度：B站解析与 yt-dlp 兜底平台（YouTube 等）生效（默认 auto=最高可用）")
     parser.add_argument("--proxy", default="", help="全局代理地址（解析+下载），如 http://127.0.0.1:7890")
     parser.add_argument("--ydl-proxy", default="", help="yt-dlp 兜底引擎的代理地址，如 http://127.0.0.1:7890")
     parser.add_argument("--no-ydl", action="store_true", help="禁用 yt-dlp 兜底（仅用 parser_core）")
@@ -97,6 +100,7 @@ def main() -> None:
     proxy = args.proxy or args.ydl_proxy  # --proxy 全局代理优先，兼容旧 --ydl-proxy
     engine = ParseEngine(
         bilibili_cookie=args.bilibili_cookie,
+        quality=args.quality,
         ydl_enabled=not args.no_ydl,
         proxy=proxy,
     )

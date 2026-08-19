@@ -222,10 +222,11 @@ class BilibiliAuthRuntime:
         self,
         session: aiohttp.ClientSession
     ) -> str:
-        """获取可直接用于请求的 Cookie 请求头。"""
-        if not self.enabled:
-            return ""
+        """获取可直接用于请求的 Cookie 请求头。
 
+        不依赖 enabled 标记（扫码登录可能在本实例构建后才完成），
+        只要存在可用 Cookie（扫码凭据或手动配置）就尝试使用。
+        """
         source, cookie_header = self._active_cookie()
         if not cookie_header:
             self.mark_cookie_unavailable("missing_cookie")

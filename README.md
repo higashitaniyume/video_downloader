@@ -13,7 +13,9 @@
 - **CLI**：解析、JSON 输出、批量下载，可脚本化
 - **下载能力强**：直链流式下载（逐字节进度）、B站 DASH 分离流、HLS(m3u8) 流、自动格式选择 + ffmpeg 音视频合并
 - **可选 B 站 Cookie**：解锁高清晰度（`--bilibili-cookie`）
-- **GUI 设置**：可在界面里配置全局代理（解析/下载全程生效，含测试按钮）与 B 站 Cookie，
+- **清晰度可配置**：B 站解析与 yt-dlp 兜底平台（YouTube 等）可统一限制最高清晰度
+  （自动 / 4K / 1080P / 720P / 480P / 360P，GUI 设置或 CLI `--quality`）
+- **GUI 设置**：可在界面里配置全局代理（解析/下载全程生效，含测试按钮）、B 站 Cookie 与最高清晰度，
   配置自动保存（`~/.video_downloader/config.json`），内置「如何获取 Cookie」图文指引
 - **B 站扫码登录**：设置里扫码即登录，凭据自动保存（`~/.video_downloader/bilibili_credentials.json`），
   无需手动复制 Cookie，下次启动免登录
@@ -65,6 +67,8 @@ python main.py
   （F12 → 网络 Network → 刷新 → 复制请求头里的 Cookie 整行）。
 - **B 站扫码登录**：点「扫码登录」弹出二维码，用 B 站手机 App 扫一扫即完成登录，
   凭据自动保存、免手动复制 Cookie；登录态优先于手动配置的 Cookie。
+- **最高清晰度**：选择 B 站解析所选画质的上限（如 1080P）；对 YouTube 等 yt-dlp 兜底平台，
+  解析结果只展示不高于该清晰度的档位。选「自动（最高可用）」则不限制。
 
 ### CLI
 
@@ -73,6 +77,8 @@ python cli.py "https://www.bilibili.com/video/BV1GJ411x7h7"
 python cli.py --download --out ./downloads "https://v.douyin.com/xxxx/ 附带任意文本"
 python cli.py --json "https://weibo.com/xxx"
 python cli.py --bilibili-cookie "SESSDATA=...; bili_jct=..." --download "https://b23.tv/xxx"
+python cli.py --quality 1080p --download "https://www.youtube.com/watch?v=xxx"
+# --quality 可选 auto/4k/1080p/720p/480p/360p（默认 auto=最高可用），B站与 yt-dlp 平台均生效
 python cli.py --proxy http://127.0.0.1:7890 --download "https://www.youtube.com/watch?v=xxx"
 # --proxy 全局代理（解析+下载）；旧参数 --ydl-proxy 仍可用，仅作用于 yt-dlp
 ```
@@ -85,6 +91,11 @@ python cli.py --proxy http://127.0.0.1:7890 --download "https://www.youtube.com/
 **Q: YouTube 解析成功但下载 403？**
 YouTube 对数据中心 IP 的下载请求直接拒绝，属平台风控。配置代理：
 `python cli.py --ydl-proxy http://127.0.0.1:7890 --download "链接"`
+
+**Q: B 站扫码登录了，解析出来还是 720P / 480P？**
+请先重启程序再重新解析（登录态在启动时加载；同一会话内扫码后也需重新解析）。
+另外注意：普通账号最高通常只能拿到 1080P；1080P60 / 1080P+ / 4K 等档位需要大会员；
+部分视频上传时本身最高就只有 720P。可在设置里把「最高清晰度」设为「自动（最高可用）」。
 
 **Q: 音视频分离没声音 / 提示需要 ffmpeg？**
 合并音视频依赖系统 ffmpeg（`choco install ffmpeg` 或官网安装后加入 PATH）。

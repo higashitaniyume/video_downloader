@@ -131,6 +131,7 @@ def build_parser_manager(
     *,
     bilibili_cookie: str = "",
     bilibili_credential_path: str = "",
+    bilibili_quality: str = "auto",
     tiktok_use_proxy: bool = False,
     tiktok_proxy_url: str = "",
 ) -> ParserManager:
@@ -139,14 +140,24 @@ def build_parser_manager(
     Args:
         bilibili_cookie: 可选 B 站登录 Cookie（形如 "SESSDATA=...; bili_jct=..."），
             提供后可解锁更高清晰度；留空则匿名解析（低清晰度可用）。
+        bilibili_quality: B 站清晰度档位（QUALITY_PRESETS 的键，如 "auto"/"1080p"），
+            限制解析所选视频流的最高画质；默认 "auto" 为最高可用。
         tiktok_use_proxy: 是否通过代理访问 TikTok。
         tiktok_proxy_url: 代理地址，形如 "http://127.0.0.1:7890"。
     """
+    from .config import quality_to_bilibili_qn
+
+    # 启用鉴权运行时的条件：手动配置了 Cookie，或本地存在扫码登录凭据文件。
+    # 之后（同会话内）扫码登录成功时凭据会写入该实例，无需重建引擎即生效。
+    runtime_enabled = bool(bilibili_cookie) or bool(
+        bilibili_credential_path and Path(bilibili_credential_path).exists()
+    )
     parsers = [
         BilibiliParser(
-            cookie_runtime_enabled=bool(bilibili_cookie),
+            cookie_runtime_enabled=runtime_enabled,
             configured_cookie=bilibili_cookie,
             credential_path=bilibili_credential_path,
+            max_quality=quality_to_bilibili_qn(bilibili_quality),
         ),
         DouyinParser(),
         KuaishouParser(),
@@ -170,6 +181,7 @@ class ParseEngine:
         timeout: float = 30.0,
         bilibili_cookie: str = "",
         bilibili_credential_path: str = DEFAULT_BILIBILI_CREDENTIAL_PATH,
+        quality: str = "auto",
         proxy: str = "",
         tiktok_use_proxy: bool = False,
         tiktok_proxy_url: str = "",
@@ -183,17 +195,22 @@ class ParseEngine:
             tiktok_use_proxy = True
             tiktok_proxy_url = self.proxy
             ydl_proxy = self.proxy
+        self.quality = (quality or "auto").strip().lower()
         self.manager = build_parser_manager(
             bilibili_cookie=bilibili_cookie,
             bilibili_credential_path=bilibili_credential_path,
+            bilibili_quality=self.quality,
             tiktok_use_proxy=tiktok_use_proxy,
             tiktok_proxy_url=tiktok_proxy_url,
         )
         self.ydl_enabled = ydl_enabled
         self._ydl_engine: Optional["YdlEngine"] = None
         if ydl_enabled:
+            from .config import quality_to_max_height
             from .ydl import YdlEngine
-            self._ydl_engine = YdlEngine(timeout=timeout, proxy=ydl_proxy)
+            self._ydl_engine = YdlEngine(
+                timeout=timeout, proxy=ydl_proxy,
+                max_height=quality_to_max_height(self.quality))
 
     def extract_links(self, text: str) -> list[str]:
         """同步提取文本中的可解析链接（按出现顺序、去重）。"""

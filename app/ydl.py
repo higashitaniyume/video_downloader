@@ -36,8 +36,11 @@ def extract_all_urls(text: str) -> list[str]:
     return urls
 
 
-def _info_to_result(url: str, info: dict) -> ParseResult:
-    """把 yt-dlp 的 info dict 映射为 ParseResult。"""
+def _info_to_result(url: str, info: dict, max_height: int = 0) -> ParseResult:
+    """把 yt-dlp 的 info dict 映射为 ParseResult。
+
+    max_height > 0 时只展示不高于该高度的视频档位（用于「清晰度」设置）。
+    """
     platform = (info.get("extractor_key") or "ydl").lower()
 
     # 精选展示档位：按高度去重（含音频的视频格式优先），最多 MAX_VIDEO_FORMATS 档
@@ -50,6 +53,8 @@ def _info_to_result(url: str, info: dict) -> ParseResult:
 
     for fmt in formats:
         if not fmt.get("url"):
+            continue
+        if max_height > 0 and _video_key(fmt) > max_height:
             continue
         vcodec = fmt.get("vcodec") or ""
         acodec = fmt.get("acodec") or ""
@@ -106,11 +111,19 @@ def _info_to_result(url: str, info: dict) -> ParseResult:
 
 
 class YdlEngine:
-    """yt-dlp 解析引擎：提取单个 URL 的元数据。"""
+    """yt-dlp 解析引擎：提取单个 URL 的元数据。
 
-    def __init__(self, *, timeout: float = 60.0, proxy: str = ""):
+    max_height: 清晰度上限（像素高度），>0 时解析结果只保留不高于该高度的档位。
+    """
+
+    def __init__(self, *, timeout: float = 60.0, proxy: str = "",
+                 max_height: int = 0):
         self.timeout = timeout
         self.proxy = proxy
+        try:
+            self.max_height = max(0, int(max_height))
+        except (TypeError, ValueError):
+            self.max_height = 0
 
     def _base_opts(self) -> dict:
         opts: dict = {
@@ -132,7 +145,7 @@ class YdlEngine:
                 return None
         if not info:
             return None
-        return _info_to_result(url, info)
+        return _info_to_result(url, info, max_height=self.max_height)
 
 
 class YdlDownloader:

@@ -1,4 +1,4 @@
-"""设置窗口：代理 + B 站 Cookie（附 Cookie 获取方法说明）。"""
+"""设置窗口：代理 + B 站 Cookie + 清晰度（附 Cookie 获取方法说明）。"""
 from __future__ import annotations
 
 import asyncio
@@ -6,9 +6,19 @@ import threading
 
 import customtkinter as ctk
 
-from app.config import AppConfig
+from app.config import AppConfig, DEFAULT_QUALITY
 from app.engine import DEFAULT_UA, ParseEngine
 from app.theme import font
+
+# 清晰度档位的展示名（QUALITY_PRESETS 键 → 下拉框文案）
+QUALITY_LABELS: dict[str, str] = {
+    "auto": "自动（最高可用）",
+    "4k": "4K（2160P）",
+    "1080p": "1080P",
+    "720p": "720P",
+    "480p": "480P",
+    "360p": "360P",
+}
 
 COOKIE_HELP = """在哪里找 Cookie（以 B 站为例）
 
@@ -33,7 +43,7 @@ COOKIE_HELP = """在哪里找 Cookie（以 B 站为例）
 
 
 class SettingsDialog(ctk.CTkToplevel):
-    """设置窗口：代理 + B 站 Cookie（附 Cookie 获取方法说明）。"""
+    """设置窗口：代理 + B 站 Cookie + 清晰度（附 Cookie 获取方法说明）。"""
 
     def __init__(self, master, config: AppConfig, engine_factory,
                  on_save, ui_post):
@@ -43,7 +53,7 @@ class SettingsDialog(ctk.CTkToplevel):
         self._ui_post = ui_post  # 工作线程投递 UI 更新到主线程的通道
 
         self.title("设置")
-        self.geometry("580x640")
+        self.geometry("580x760")
         self.resizable(False, False)
         self.transient(master)
         self.grab_set()
@@ -116,12 +126,33 @@ class SettingsDialog(ctk.CTkToplevel):
             anchor="w").grid(row=7, column=0, sticky="w", padx=18, pady=(4, 0))
         self._toggle_cookie_show()
 
-        # ── B 站扫码登录 ─────────────────────────────
-        ctk.CTkLabel(self, text="B 站扫码登录", font=font(14, "bold"),
+        # ── 清晰度 ────────────────────────────────────
+        ctk.CTkLabel(self, text="清晰度（B 站 / 可自选清晰度的平台）",
+                     font=font(14, "bold"),
                      anchor="w").grid(row=8, column=0, sticky="w",
                                       padx=18, pady=(18, 4))
+        quality_row = ctk.CTkFrame(self, fg_color="transparent")
+        quality_row.grid(row=9, column=0, sticky="ew", padx=18, pady=(4, 0))
+        quality_row.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(quality_row, text="最高清晰度", font=font(13),
+                     anchor="w").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        quality_key = config.quality if config.quality in QUALITY_LABELS else DEFAULT_QUALITY
+        self.quality_menu = ctk.CTkOptionMenu(
+            quality_row, values=list(QUALITY_LABELS.values()), font=font(12),
+            width=210, height=28, anchor="w")
+        self.quality_menu.set(QUALITY_LABELS[quality_key])
+        self.quality_menu.grid(row=0, column=1, sticky="e")
+        ctk.CTkLabel(
+            self, text="B 站解析按此档位限制所选画质；YouTube 等 yt-dlp 平台只展示不高于该清晰度的档位",
+            font=font(11), text_color=("gray40", "gray60"),
+            anchor="w").grid(row=10, column=0, sticky="w", padx=18, pady=(4, 0))
+
+        # ── B 站扫码登录 ─────────────────────────────
+        ctk.CTkLabel(self, text="B 站扫码登录", font=font(14, "bold"),
+                     anchor="w").grid(row=11, column=0, sticky="w",
+                                      padx=18, pady=(18, 4))
         login_row = ctk.CTkFrame(self, fg_color="transparent")
-        login_row.grid(row=9, column=0, sticky="ew", padx=18, pady=(4, 0))
+        login_row.grid(row=12, column=0, sticky="ew", padx=18, pady=(4, 0))
         login_row.grid_columnconfigure(1, weight=1)
         self.login_button = ctk.CTkButton(login_row, text="扫码登录", width=96,
                                           height=26, command=self._on_qr_login)
@@ -132,12 +163,12 @@ class SettingsDialog(ctk.CTkToplevel):
         ctk.CTkLabel(
             self, text="扫码登录后凭据自动保存到本地，下次启动免登录，比手动复制 Cookie 更稳定",
             font=font(11), text_color=("gray40", "gray60"),
-            anchor="w").grid(row=10, column=0, sticky="w", padx=18, pady=(4, 0))
+            anchor="w").grid(row=13, column=0, sticky="w", padx=18, pady=(4, 0))
         self._refresh_login_status()
 
         # ── 保存 / 取消 ──────────────────────────────
         bottom = ctk.CTkFrame(self, fg_color="transparent")
-        bottom.grid(row=11, column=0, sticky="ew", padx=18, pady=(22, 18))
+        bottom.grid(row=14, column=0, sticky="ew", padx=18, pady=(22, 18))
         bottom.grid_columnconfigure(0, weight=1)
         bottom.grid_columnconfigure(1, weight=1)
         ctk.CTkButton(bottom, text="取消", height=32,
@@ -206,9 +237,15 @@ class SettingsDialog(ctk.CTkToplevel):
                       on_success=self._refresh_login_status)
 
     def _on_save_clicked(self) -> None:
+        selected = self.quality_menu.get()
+        quality_key = next(
+            (key for key, label in QUALITY_LABELS.items() if label == selected),
+            DEFAULT_QUALITY,
+        )
         config = AppConfig(
             proxy_url=self.proxy_entry.get().strip() if self.proxy_switch.get() else "",
             bilibili_cookie=self.cookie_entry.get().strip(),
+            quality=quality_key,
         )
         self.destroy()
         self._on_save(config)

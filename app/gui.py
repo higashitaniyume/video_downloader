@@ -356,6 +356,7 @@ class MediaToolApp(ctk.CTk):
 
     def _build_engine(self) -> ParseEngine:
         return ParseEngine(bilibili_cookie=self.config.bilibili_cookie,
+                           quality=self.config.quality,
                            proxy=self.config.proxy_url)
 
     def _open_settings(self) -> None:
@@ -367,8 +368,13 @@ class MediaToolApp(ctk.CTk):
         config.save()
         self.engine = self._build_engine()
         self._downloader = None  # 下次下载时按新代理重建
-        proxy_note = f"（代理：{config.proxy_url}）" if config.proxy_url else ""
-        self.status_label.configure(text=f"设置已保存{proxy_note}")
+        notes = []
+        if config.proxy_url:
+            notes.append(f"代理：{config.proxy_url}")
+        if config.quality != "auto":
+            notes.append(f"清晰度：{config.quality}")
+        note = f"（{'，'.join(notes)}）" if notes else ""
+        self.status_label.configure(text=f"设置已保存{note}")
 
     def _cover_worker(self, card: ResultCard, result: ParseResult) -> None:
         try:

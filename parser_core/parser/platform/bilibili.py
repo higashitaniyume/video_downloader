@@ -133,10 +133,11 @@ class BilibiliParser(BaseVideoParser):
         self,
         session: aiohttp.ClientSession
     ) -> str:
-        """异步获取当前请求可用的 Cookie 请求头。"""
-        if not self.cookie_runtime_enabled:
-            return ""
+        """异步获取当前请求可用的 Cookie 请求头。
 
+        不再以 cookie_runtime_enabled 拦截：扫码登录/凭据文件可能在本实例
+        构建之后才写入，统一交给 auth_runtime 判断当前是否有可用 Cookie。
+        """
         cookie_header = await self.auth_runtime.get_cookie_header_for_request(
             session
         )
@@ -1569,7 +1570,9 @@ class BilibiliParser(BaseVideoParser):
             "fnval": fnval,
             "fourk": 1,
             "otype": "json",
-            "platform": "html5",
+            # 必须用 pc（网页播放器）而非 html5：html5 会被接口强制压低画质
+            # （登录后也最多 720P/1080P，且拿不到 1080P60/1080P+/4K 等档位）
+            "platform": "pc",
             "high_quality": 1
         }
         if bvid:
@@ -2080,8 +2083,15 @@ class BilibiliParser(BaseVideoParser):
                 cookie_header=cookie_header
             )
         merged_payload = self._unwrap_playurl_data(merged_try)
-        if merged_payload.get("durl"):
-            return merged_payload["durl"][0].get("url")
+        merged_durl = merged_payload.get("durl")
+        # 仅当 MP4 直链确实达到目标画质时才采用：1080P60/4K 等档位没有 MP4 版本，
+        # 接口会悄悄降级返回 720P 的 MP4（quality < target_qn），此时必须走 DASH
+        # 才能拿到目标高画质。
+        if (
+            merged_durl and
+            int(merged_payload.get("quality") or 0) >= target_qn
+        ):
+            return merged_durl[0].get("url")
         if bvid:
             dash_try = await self.ugc_playurl(
                 bvid=bvid,
@@ -2103,7 +2113,13 @@ class BilibiliParser(BaseVideoParser):
                 cookie_header=cookie_header
             )
         dash_payload = self._unwrap_playurl_data(dash_try)
-        return self._build_dash_download_url(dash_payload.get("dash") or {})
+        dash_url = self._build_dash_download_url(dash_payload.get("dash") or {})
+        if dash_url:
+            return dash_url
+        # 兜底：DASH 不可用（如部分视频无 DASH 流）时退回 MP4 直链
+        if merged_durl:
+            return merged_durl[0].get("url")
+        return None
 
     async def parse_opus(
         self,
@@ -2699,8 +2715,14 @@ class BilibiliParser(BaseVideoParser):
                 cookie_header=cookie_header
             )
             merged_payload = self._unwrap_playurl_data(merged_try)
-            if merged_payload.get("durl"):
-                direct_url = merged_payload["durl"][0].get("url")
+            merged_durl = merged_payload.get("durl")
+            # 同 UGC：MP4 直链被接口降级（如 1080P60 请求只给 720P MP4）时不采用，
+            # 改走 DASH 获取目标高画质。
+            if (
+                merged_durl and
+                int(merged_payload.get("quality") or 0) >= target_qn
+            ):
+                direct_url = merged_durl[0].get("url")
             else:
                 dash_try = await self.pgc_playurl_v2(
                     ep_id,
@@ -2711,10 +2733,14 @@ class BilibiliParser(BaseVideoParser):
                     cookie_header=cookie_header
                 )
                 dash_payload = self._unwrap_playurl_data(dash_try)
-                direct_url = (
-                    self._build_dash_download_url(dash_payload.get("dash") or {}) or
-                    ""
-                )
+                dash_url = self._build_dash_download_url(dash_payload.get("dash") or {})
+                if dash_url:
+                    direct_url = dash_url
+                elif merged_durl:
+                    # 兜底：DASH 不可用时退回 MP4 直链
+                    direct_url = merged_durl[0].get("url")
+                else:
+                    direct_url = ""
         else:
             raise RuntimeError(f"无法识别视频类型: {url}")
         if not direct_url:
