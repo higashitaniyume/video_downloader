@@ -17,3 +17,5 @@ config.json
 bilibili_credentials.json
 # PyInstaller 生成的 spec 文件
 *.spec
+# 日志
+logs/

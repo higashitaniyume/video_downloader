@@ -6,11 +6,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
 import aiohttp
+
+logger = logging.getLogger(__name__)
 
 from parser_core.parser import ParserManager
 from parser_core.parser.platform import (
@@ -252,6 +255,14 @@ class ParseEngine:
                     ))
                 else:
                     results.append(ydl_result)
+        ok = sum(1 for r in results if not r.is_error)
+        logger.info(
+            "解析完成：共 %d 条，成功 %d 条，失败 %d 条",
+            len(results), ok, len(results) - ok,
+        )
+        for r in results:
+            if r.is_error:
+                logger.warning("解析失败 [%s] %s: %s", r.platform, r.url, r.error)
         return results
 
     async def parse_urls(self, urls: list[str]) -> list[ParseResult]:

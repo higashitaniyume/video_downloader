@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import shutil
@@ -16,6 +17,8 @@ from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
 import aiohttp
+
+logger = logging.getLogger(__name__)
 
 from parser_core.constants import Config
 from parser_core.downloader import DownloadManager
@@ -342,8 +345,14 @@ class MediaDownloader:
                 file = await self._download_light(session, result, item, progress, control)
                 if file:
                     summary.files.append(file)
+                    logger.info(
+                        "下载完成 [%s] %s -> %s（%.1f MB）",
+                        result.platform, file.label, file.path.name,
+                        file.size_bytes / 1024 / 1024,
+                    )
             except (aiohttp.ClientError, OSError) as exc:
                 summary.errors.append(f"{result.platform} {item.kind}{item.index} 下载失败: {exc}")
+                logger.warning("下载失败 [%s] %s%d: %s", result.platform, item.kind, item.index, exc)
             except asyncio.CancelledError:
                 raise
 
@@ -356,7 +365,15 @@ class MediaDownloader:
                 raise
             except Exception as exc:  # noqa: BLE001 —— 下载失败不应中断整个任务
                 summary.errors.append(f"{result.platform} 复杂流下载失败: {exc}")
+                logger.exception("复杂流下载失败 [%s]: %s", result.platform, exc)
 
+        if summary.files:
+            logger.info(
+                "任务完成 [%s]：成功 %d 个文件，失败 %d 条",
+                result.platform, len(summary.files), len(summary.errors),
+            )
+        elif summary.errors:
+            logger.warning("任务失败 [%s]：%s", result.platform, "；".join(summary.errors[:3]))
         return summary
 
     def _download_ydl(self, result: ParseResult,

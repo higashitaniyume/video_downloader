@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 import queue
 import threading
 from dataclasses import replace
@@ -18,6 +20,8 @@ from app.settings_dialog import SettingsDialog
 from app.theme import font
 from app.downloader import MediaDownloader
 from app.engine import DEFAULT_UA, MediaItem, ParseEngine, ParseResult
+
+logger = logging.getLogger(__name__)
 
 # 平台徽章配色（深色主题）
 PLATFORM_COLORS = {
@@ -228,14 +232,19 @@ class MediaToolApp(ctk.CTk):
         btn_row.grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 10))
         btn_row.grid_columnconfigure(0, weight=1)
         btn_row.grid_columnconfigure(1, weight=1)
+        btn_row.grid_columnconfigure(2, weight=1)
         self.clear_button = ctk.CTkButton(btn_row, text="清空", height=28,
                                           fg_color="transparent", border_width=1,
                                           command=self._on_clear)
-        self.clear_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        self.clear_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        self.log_button = ctk.CTkButton(btn_row, text="日志", height=28,
+                                        fg_color="transparent", border_width=1,
+                                        command=self._open_logs_folder)
+        self.log_button.grid(row=0, column=1, sticky="ew", padx=(4, 4))
         self.settings_button = ctk.CTkButton(btn_row, text="设置", height=28,
                                              fg_color="transparent", border_width=1,
                                              command=self._open_settings)
-        self.settings_button.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+        self.settings_button.grid(row=0, column=2, sticky="ew", padx=(4, 0))
 
         ctk.CTkLabel(sidebar, text="输出目录", font=font(13, "bold"),
                      anchor="w").grid(row=4, column=0, sticky="w", padx=14, pady=(6, 4))
@@ -317,6 +326,7 @@ class MediaToolApp(ctk.CTk):
         if not text:
             self.status_label.configure(text="请先粘贴链接")
             return
+        logger.info("开始解析（文本 %d 字符）", len(text))
         self._set_busy(True, "正在解析…")
         threading.Thread(target=self._parse_worker, args=(text,), daemon=True).start()
 
@@ -331,6 +341,7 @@ class MediaToolApp(ctk.CTk):
     def _render_results(self, results: list[ParseResult]) -> None:
         self._clear_cards()
         if not results:
+            logger.info("未识别到可解析的链接")
             self._set_busy(False, "未识别到可解析的链接")
             return
         for result in results:
@@ -340,6 +351,7 @@ class MediaToolApp(ctk.CTk):
             if result.cover_urls:
                 threading.Thread(target=self._cover_worker,
                                  args=(card, result), daemon=True).start()
+        logger.info("解析完成，共 %d 条", len(results))
         self._set_busy(False, f"解析完成，共 {len(results)} 条")
 
     def _clear_cards(self) -> None:
@@ -363,6 +375,17 @@ class MediaToolApp(ctk.CTk):
         SettingsDialog(self, self.config, lambda: self.engine,
                        on_save=self._apply_settings, ui_post=self._ui)
 
+    def _open_logs_folder(self) -> None:
+        """打开日志文件夹（程序目录下的 logs）。"""
+        from app.logging_setup import get_log_dir
+        log_dir = get_log_dir()
+        log_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.startfile(str(log_dir))  # Windows 资源管理器
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("打开日志文件夹失败: %s", exc)
+            self.status_label.configure(text=f"无法打开日志文件夹：{exc}")
+
     def _apply_settings(self, config: AppConfig) -> None:
         self.config = config
         config.save()
@@ -374,6 +397,7 @@ class MediaToolApp(ctk.CTk):
         if config.quality != "auto":
             notes.append(f"清晰度：{config.quality}")
         note = f"（{'，'.join(notes)}）" if notes else ""
+        logger.info("设置已保存（代理=%s，清晰度=%s）", config.proxy_url or "-", config.quality)
         self.status_label.configure(text=f"设置已保存{note}")
 
     def _cover_worker(self, card: ResultCard, result: ParseResult) -> None:
@@ -474,7 +498,9 @@ class MediaToolApp(ctk.CTk):
             return
         for card, _result, _items in jobs:
             card.set_downloading(True)
-        self._set_busy(True, f"开始下载 {sum(len(items) for _, _, items in jobs)} 个媒体…")
+        total_items = sum(len(items) for _, _, items in jobs)
+        logger.info("开始下载 %d 个媒体项（输出目录：%s）", total_items, out_dir)
+        self._set_busy(True, f"开始下载 {total_items} 个媒体…")
         out_dir = Path(self.out_entry.get().strip() or str(self._out_dir))
         control = DownloadControl()
         self._active_control = control

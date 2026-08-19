@@ -129,6 +129,7 @@ app/
   ydl.py          通用站点引擎与下载器（格式档位精选、进度钩子、ffmpeg 合并）
   downloader.py   直链下载器：流式下载（进度）+ DASH/HLS 处理
   config.py       应用配置持久化（代理、Cookie、清晰度 → 当前目录 config.json）
+  logging_setup.py  日志系统（→ <程序目录>/logs/，滚动保留 + 未捕获异常落盘）
   portable.py     便携运行支持（exe 打包后自动找到随包 ffmpeg）
   theme.py        UI 字体工具（使用系统默认字体）
   settings_dialog.py  设置窗口（代理 + Cookie + 扫码登录 + 获取方法说明）
