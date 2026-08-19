@@ -15,6 +15,7 @@ from pathlib import Path
 
 from app.downloader import MediaDownloader
 from app.engine import ParseEngine
+from app.portable import setup_portable_env
 
 
 def _format_bytes(size: int) -> str:
@@ -72,6 +73,7 @@ async def _download_all(downloader: MediaDownloader, results, out_dir: Path) -> 
 
 
 def main() -> None:
+    setup_portable_env()
     parser = argparse.ArgumentParser(
         description="视频/媒体链接解析与下载工具（复用 HIKARI_BOT_NEO 解析核心）",
     )

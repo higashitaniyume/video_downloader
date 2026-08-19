@@ -15,3 +15,5 @@ cache/
 # 本地配置与登录凭据（含 Cookie，切勿提交）
 config.json
 bilibili_credentials.json
+# PyInstaller 生成的 spec 文件
+*.spec

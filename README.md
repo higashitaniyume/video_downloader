@@ -106,6 +106,18 @@ YouTube 对数据中心 IP 的下载请求直接拒绝，属平台风控。配�
 **Q: 音视频分离没声音 / 提示需要 ffmpeg？**
 合并音视频依赖系统 ffmpeg（`choco install ffmpeg` 或官网安装后加入 PATH）。
 
+## 自动构建 Windows EXE（GitHub Actions）
+
+仓库内置 `.github/workflows/build-exe.yml`，自动用 PyInstaller 打包
+`video-downloader-GUI.exe`（onefile，**内置 ffmpeg/ffprobe，用户无需安装 ffmpeg**）：
+
+- **触发方式**：推送到 `main` 分支、或在 Actions 页面手动运行（workflow_dispatch）；
+  推送 `v*` 标签时额外自动创建 GitHub Release 并附上构建产物。
+- **下载产物**：Actions 页 → 对应运行记录 → Artifacts 下载 zip（内含 exe + ffmpeg）。
+- **发布版本**：`git tag v0.1.0 && git push origin v0.1.0`。
+- **提示**：未签名程序首次运行会被 Windows SmartScreen 拦截，
+  点「更多信息 → 仍要运行」；杀软也可能误报 PyInstaller onefile，属常见现象。
+
 ## 项目结构
 
 ```
@@ -117,6 +129,7 @@ app/
   ydl.py          通用站点引擎与下载器（格式档位精选、进度钩子、ffmpeg 合并）
   downloader.py   直链下载器：流式下载（进度）+ DASH/HLS 处理
   config.py       应用配置持久化（代理、Cookie、清晰度 → 当前目录 config.json）
+  portable.py     便携运行支持（exe 打包后自动找到随包 ffmpeg）
   theme.py        UI 字体工具（使用系统默认字体）
   settings_dialog.py  设置窗口（代理 + Cookie + 扫码登录 + 获取方法说明）
   gui.py          图形界面

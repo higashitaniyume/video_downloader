@@ -3,9 +3,11 @@
 用法：python main.py
 """
 from app.gui import MediaToolApp
+from app.portable import setup_portable_env
 
 
 def main():
+    setup_portable_env()
     app = MediaToolApp()
     app.mainloop()
 
