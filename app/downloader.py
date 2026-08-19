@@ -21,6 +21,7 @@ from parser_core.constants import Config
 from parser_core.downloader import DownloadManager
 
 from .common import DownloadSummary, DownloadedFile, sanitize_filename, unique_path
+from .control import DownloadControl, TaskCancelled
 from .engine import MediaItem, ParseResult
 
 ProgressCallback = Callable[[str, int, Optional[int]], Awaitable[None]]
@@ -104,11 +105,15 @@ async def download_stream(
     dest: Path,
     progress: ProgressCallback,
     label: str,
-) -> None:
-    """流式下载单个直链到 dest。
+    control: Optional[DownloadControl] = None,
+) -> Path:
+    """流式下载单个直链到 dest，返回实际落盘路径。
 
     ``range:`` 前缀表示服务器要求 Range 头；先写 .part 临时文件，成功后再改名。
+    dest 无后缀时按 Content-Type 推断扩展名（返回的路径可能不同于入参）。
+    control 非空时逐 chunk 检查暂停/取消；取消会清理 .part 且不落盘正式文件。
     """
+    control = control or DownloadControl()
     use_range = url.startswith("range:")
     request_headers = dict(headers)
     if use_range:
@@ -133,13 +138,16 @@ async def download_stream(
                     total = None
 
             done = 0
+            await control.checkpoint()
             await progress(label, 0, total)
             with open(tmp, "wb") as handle:
                 async for chunk in resp.content.iter_chunked(1024 * 256):
+                    await control.checkpoint()
                     handle.write(chunk)
                     done += len(chunk)
                     await progress(label, done, total)
         os.replace(tmp, dest)
+        return dest
     finally:
         if tmp.exists():
             tmp.unlink(missing_ok=True)
@@ -154,9 +162,11 @@ class MediaDownloader:
         cache_dir: Optional[str | Path] = None,
         *,
         max_video_size_mb: float = 0.0,
+        proxy: str = "",
     ):
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.proxy = proxy.strip()
         if cache_dir is None:
             cache_dir = Path.home() / ".video_downloader" / "cache"
         self.cache_dir = Path(cache_dir)
@@ -185,15 +195,18 @@ class MediaDownloader:
         result: ParseResult,
         item: MediaItem,
         progress: ProgressCallback,
+        control: DownloadControl,
     ) -> Optional[DownloadedFile]:
         headers = result.video_headers if item.kind == "video" else result.image_headers
         last_error: Optional[Exception] = None
         for url in item.urls:
+            await control.checkpoint()
             label = f"{result.platform} · {item.kind}{item.index}"
             try:
                 probe_ext = _ext_from_url(url)
                 dest = unique_path(self.out_dir, self._friendly_name(result, item, probe_ext))
-                await download_stream(session, url, headers, dest, progress, label)
+                dest = await download_stream(
+                    session, url, headers, dest, progress, label, control)
                 return DownloadedFile(
                     path=dest,
                     label=label,
@@ -211,15 +224,52 @@ class MediaDownloader:
         session: aiohttp.ClientSession,
         result: ParseResult,
         heavy_items: list[MediaItem],
+        control: DownloadControl,
     ) -> list[DownloadedFile]:
-        """dash:/m3u8: 等复杂流：构造子元数据交给机器人的 DownloadManager。"""
+        """dash:/m3u8: 等复杂流：构造子元数据交给机器人的 DownloadManager。
+
+        取消时由 watchdog 立即取消管理器内的下载任务；暂停通过
+        on_sendable_media 钩子（每个媒体决策前）生效。
+        """
         raw = dict(result.raw)
         raw["video_urls"] = [item.urls for item in heavy_items]
         raw["image_urls"] = []
         raw["video_headers"] = result.video_headers
         raw["image_headers"] = result.image_headers
         raw.pop("file_paths", None)
-        await self._manager.process_metadata(session, raw)
+        if self.proxy:
+            # 全局代理：让机器人的下载管理器对 dash/m3u8 流也走代理
+            raw["proxy_url"] = self.proxy
+            raw["use_video_proxy"] = True
+            raw["use_image_proxy"] = True
+
+        # 取消信号到达时，manager 内部的下载任务（await 中）感知不到
+        # checkpoint，由 watchdog 直接取消它们（管理器保持可复用）。
+        async def watchdog() -> None:
+            while True:
+                if control.is_cancelled:
+                    self._manager.cancel_active_downloads()
+                    return
+                await asyncio.sleep(0.1)
+
+        async def checkpoint_cb() -> None:
+            await control.checkpoint()
+
+        watch = asyncio.create_task(watchdog())
+        try:
+            await self._manager.process_metadata(
+                session, raw, on_sendable_media=checkpoint_cb)
+        except asyncio.CancelledError:
+            raise TaskCancelled() from None
+        finally:
+            watch.cancel()
+            try:
+                await watch
+            except asyncio.CancelledError:
+                pass
+
+        # 取消后不再把缓存文件搬运到输出目录
+        await control.checkpoint()
         paths = raw.get("file_paths") or []
 
         files: list[DownloadedFile] = []
@@ -242,11 +292,16 @@ class MediaDownloader:
         session: aiohttp.ClientSession,
         result: ParseResult,
         progress: Optional[ProgressCallback] = None,
+        control: Optional[DownloadControl] = None,
     ) -> DownloadSummary:
-        """下载一个解析结果的全部媒体项，返回文件清单与错误。"""
+        """下载一个解析结果的全部媒体项，返回文件清单与错误。
+
+        control 非空时支持暂停/取消；TaskCancelled 向上传播不写入错误列表。
+        """
         # yt-dlp 兜底结果：交给 YdlDownloader（格式选择/音视频合并由 yt-dlp 完成）
         if result.raw.get("ydl"):
-            return await asyncio.to_thread(self._download_ydl, result, progress)
+            return await asyncio.to_thread(self._download_ydl, result, progress, control)
+        control = control or DownloadControl()
         progress = progress or (lambda _label, _d, _t: asyncio.sleep(0))
         summary = DownloadSummary()
 
@@ -255,7 +310,7 @@ class MediaDownloader:
 
         for item in light_items:
             try:
-                file = await self._download_light(session, result, item, progress)
+                file = await self._download_light(session, result, item, progress, control)
                 if file:
                     summary.files.append(file)
             except (aiohttp.ClientError, OSError) as exc:
@@ -266,32 +321,46 @@ class MediaDownloader:
         if heavy_items:
             try:
                 summary.files.extend(
-                    await self._download_heavy(session, result, heavy_items)
+                    await self._download_heavy(session, result, heavy_items, control)
                 )
+            except TaskCancelled:
+                raise
             except Exception as exc:  # noqa: BLE001 —— 下载失败不应中断整个任务
                 summary.errors.append(f"{result.platform} 复杂流下载失败: {exc}")
 
         return summary
 
     def _download_ydl(self, result: ParseResult,
-                      progress: Optional[ProgressCallback] = None) -> DownloadSummary:
+                      progress: Optional[ProgressCallback] = None,
+                      control: Optional[DownloadControl] = None) -> DownloadSummary:
         from .ydl import YdlDownloader
-        downloader = YdlDownloader(self.out_dir)
-        return downloader.download_result_sync(result, result.items, progress)
+        downloader = YdlDownloader(self.out_dir, proxy=self.proxy)
+        return downloader.download_result_sync(result, result.items, progress, control)
 
     def download_result_sync(
         self,
         result: ParseResult,
         progress: Optional[ProgressCallback] = None,
+        control: Optional[DownloadControl] = None,
     ) -> DownloadSummary:
         """同步入口，供 GUI 后台线程 / CLI 调用。"""
         async def _run() -> DownloadSummary:
-            async with aiohttp.ClientSession() as session:
-                return await self.download_result(session, result, progress)
+            # 不限制总时长：大文件可能超过 aiohttp 默认 5 分钟，
+            # 暂停/恢复期间也不应因总超时而中断
+            session_kwargs: dict = {"timeout": aiohttp.ClientTimeout(total=None)}
+            if self.proxy:
+                session_kwargs["proxy"] = self.proxy
+            async with aiohttp.ClientSession(**session_kwargs) as session:
+                return await self.download_result(session, result, progress, control)
         return asyncio.run(_run())
 
-    def shutdown(self) -> None:
+    def cancel_active(self) -> None:
+        """取消当前批次仍在运行的下载任务（管理器保持可复用）。"""
         try:
-            asyncio.run(self._manager.shutdown())
+            asyncio.run(self._manager.cancel_active_downloads())
         except Exception:  # noqa: BLE001
             pass
+
+    def shutdown(self) -> None:
+        """释放下载器：仅取消活动任务，幂等且可安全重复调用。"""
+        self.cancel_active()

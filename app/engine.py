@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 import aiohttp
@@ -28,6 +29,11 @@ from parser_core.parser.platform import (
 DEFAULT_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
+
+# B 站扫码登录凭据文件（GUI 与 CLI 共享，与 ~/.video_downloader/config.json 同级）
+DEFAULT_BILIBILI_CREDENTIAL_PATH = str(
+    Path.home() / ".video_downloader" / "bilibili_credentials.json"
 )
 
 
@@ -124,6 +130,7 @@ class ParseResult:
 def build_parser_manager(
     *,
     bilibili_cookie: str = "",
+    bilibili_credential_path: str = "",
     tiktok_use_proxy: bool = False,
     tiktok_proxy_url: str = "",
 ) -> ParserManager:
@@ -136,7 +143,11 @@ def build_parser_manager(
         tiktok_proxy_url: 代理地址，形如 "http://127.0.0.1:7890"。
     """
     parsers = [
-        BilibiliParser(cookie_runtime_enabled=bool(bilibili_cookie), configured_cookie=bilibili_cookie),
+        BilibiliParser(
+            cookie_runtime_enabled=bool(bilibili_cookie),
+            configured_cookie=bilibili_cookie,
+            credential_path=bilibili_credential_path,
+        ),
         DouyinParser(),
         KuaishouParser(),
         TikTokParser(use_proxy=tiktok_use_proxy, proxy_url=tiktok_proxy_url),
@@ -158,14 +169,23 @@ class ParseEngine:
         *,
         timeout: float = 30.0,
         bilibili_cookie: str = "",
+        bilibili_credential_path: str = DEFAULT_BILIBILI_CREDENTIAL_PATH,
+        proxy: str = "",
         tiktok_use_proxy: bool = False,
         tiktok_proxy_url: str = "",
         ydl_enabled: bool = True,
         ydl_proxy: str = "",
     ):
         self.timeout = timeout
+        self.proxy = proxy.strip()
+        # 全局代理：同时作用于 parser_core 请求、TikTok 专用代理与 yt-dlp 兜底
+        if self.proxy:
+            tiktok_use_proxy = True
+            tiktok_proxy_url = self.proxy
+            ydl_proxy = self.proxy
         self.manager = build_parser_manager(
             bilibili_cookie=bilibili_cookie,
+            bilibili_credential_path=bilibili_credential_path,
             tiktok_use_proxy=tiktok_use_proxy,
             tiktok_proxy_url=tiktok_proxy_url,
         )
@@ -191,7 +211,10 @@ class ParseEngine:
         parser_core 能识别的平台优先；其余 URL 交给 yt-dlp 兜底。
         """
         timeout = aiohttp.ClientTimeout(total=self.timeout)
-        async with aiohttp.ClientSession(headers={"User-Agent": DEFAULT_UA}, timeout=timeout) as session:
+        session_kwargs: dict = {"headers": {"User-Agent": DEFAULT_UA}, "timeout": timeout}
+        if self.proxy:
+            session_kwargs["proxy"] = self.proxy
+        async with aiohttp.ClientSession(**session_kwargs) as session:
             raw_list = await self.manager.parse_text(text, session)
         results = [ParseResult.from_raw(raw) for raw in raw_list]
 
@@ -221,3 +244,37 @@ class ParseEngine:
 
     def parse_urls_sync(self, urls: list[str]) -> list[ParseResult]:
         return asyncio.run(self.parse_urls(urls))
+
+    # ── B 站扫码登录 ─────────────────────────────────
+
+    def bilibili_auth(self) -> Any:
+        """返回 BilibiliParser 内部的鉴权运行时（含扫码登录、凭据持久化）。"""
+        for parser in self.manager.parsers:
+            if isinstance(parser, BilibiliParser):
+                return parser.auth_runtime
+        raise RuntimeError("BilibiliParser 未注册")
+
+    def bilibili_auth_status(self) -> str:
+        """B 站登录态描述：未登录 / 已扫码登录 / 已配置 Cookie。"""
+        auth = self.bilibili_auth()
+        source, _cookie = auth.get_active_cookie_source()
+        if source == "runtime":
+            return "已扫码登录"
+        if source == "configured":
+            return "已配置 Cookie"
+        return "未登录"
+
+    def bilibili_qr_payload(self) -> dict:
+        """生成 B 站扫码登录载荷（含二维码图片 URL 与 qrcode_key）。"""
+        async def _run() -> dict:
+            async with aiohttp.ClientSession() as session:
+                return await self.bilibili_auth().generate_login_payload(session)
+        return asyncio.run(_run())
+
+    def bilibili_poll_login(self, qrcode_key: str, timeout_seconds: int = 180) -> dict:
+        """轮询 B 站扫码登录结果；成功时凭据自动保存到本地文件。"""
+        async def _run() -> dict:
+            async with aiohttp.ClientSession() as session:
+                return await self.bilibili_auth().poll_login_until_complete(
+                    session, qrcode_key, timeout_seconds)
+        return asyncio.run(_run())

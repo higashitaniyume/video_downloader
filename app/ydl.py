@@ -13,6 +13,7 @@ from typing import Optional
 
 import yt_dlp
 
+from .control import DownloadControl, TaskCancelled
 from .engine import MediaItem, ParseResult
 from .common import DownloadSummary, DownloadedFile, sanitize_filename, unique_path
 
@@ -159,19 +160,28 @@ class YdlDownloader:
         result: ParseResult,
         items: list[MediaItem],
         progress=None,
+        control: Optional[DownloadControl] = None,
     ) -> DownloadSummary:
-        """逐个下载勾选的格式档位，返回文件清单与错误。"""
+        """逐个下载勾选的格式档位，返回文件清单与错误。
+
+        control 非空时支持取消（item 间生效）；TaskCancelled 向上传播。
+        """
         summary = DownloadSummary()
         webpage_url = result.raw.get("webpage_url") or result.url
         base_name = sanitize_filename(result.title or result.platform)
 
         for n, item in enumerate(items, start=1):
+            if control:
+                control.sync_checkpoint()
             label = f"{result.platform} · {item.name or f'{item.kind}{item.index}'}"
             try:
-                path = self._download_one(webpage_url, item, base_name, n, label, progress)
+                path = self._download_one(
+                    webpage_url, item, base_name, n, label, progress, control)
                 if path:
                     summary.files.append(DownloadedFile(path=path, label=label,
                                                         size_bytes=path.stat().st_size))
+            except TaskCancelled:
+                raise
             except Exception as exc:  # noqa: BLE001
                 summary.errors.append(f"{label} 下载失败: {exc}")
         return summary
@@ -184,6 +194,7 @@ class YdlDownloader:
         n: int,
         label: str,
         progress,
+        control: Optional[DownloadControl] = None,
     ) -> Optional[Path]:
         format_spec = item.format_id or "best"
         # 视频档补音频合并（yt-dlp 无 ffmpeg 时自动降级）
@@ -195,6 +206,9 @@ class YdlDownloader:
         state: dict = {"finished": False}
 
         def hook(d: dict) -> None:
+            # 取消时抛异常，让 yt-dlp 中断本次下载
+            if control and control.is_cancelled:
+                raise TaskCancelled()
             if d.get("status") == "downloading" and progress:
                 total = d.get("total_bytes") or d.get("total_bytes_estimate")
                 progress(label, int(d.get("downloaded_bytes") or 0), int(total or 0))
@@ -211,11 +225,22 @@ class YdlDownloader:
             "nopart": True,
             "overwrites": True,
         }
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            try:
-                ydl.download([webpage_url])
-            except yt_dlp.utils.DownloadError as exc:
-                raise RuntimeError(str(exc) or "yt-dlp 下载失败") from exc
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                try:
+                    ydl.download([webpage_url])
+                except yt_dlp.utils.DownloadError as exc:
+                    if control and control.is_cancelled:
+                        raise TaskCancelled() from exc
+                    raise RuntimeError(str(exc) or "yt-dlp 下载失败") from exc
+        except TaskCancelled:
+            # 清理被中断下载的残留临时文件
+            for leftover in tmp_dir.glob(f"tmp_{n}.*"):
+                try:
+                    leftover.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise
 
         files = sorted(tmp_dir.glob(f"tmp_{n}.*"))
         if not files:

@@ -138,6 +138,10 @@ class BilibiliAuthRuntime:
         except Exception as e:
             logger.warning(f"[bilibili] 保存运行时Cookie文件失败: {e}")
 
+    def get_active_cookie_source(self) -> Tuple[str, str]:
+        """返回当前生效的 Cookie 来源（"runtime"/"configured"/""）与 Cookie 请求头。"""
+        return self._active_cookie()
+
     def _active_cookie(self) -> Tuple[str, str]:
         """返回当前优先使用的 Cookie 字典。"""
         if self._runtime_cookie_header:

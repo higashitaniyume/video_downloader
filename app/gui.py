@@ -12,6 +12,10 @@ import customtkinter as ctk
 from tkinter import filedialog
 
 from app.common import DownloadSummary
+from app.config import AppConfig
+from app.control import DownloadControl, TaskCancelled
+from app.settings_dialog import SettingsDialog
+from app.theme import font
 from app.downloader import MediaDownloader
 from app.engine import DEFAULT_UA, MediaItem, ParseEngine, ParseResult
 
@@ -67,13 +71,13 @@ class ResultCard(ctk.CTkFrame):
 
         platform_color = PLATFORM_COLORS.get(result.platform, PLATFORM_DEFAULT_COLOR)
         badge = ctk.CTkLabel(
-            self, text=f" {result.platform} ", font=ctk.CTkFont(size=12, weight="bold"),
+            self, text=f" {result.platform} ", font=font(12, "bold"),
             fg_color=platform_color, corner_radius=6, text_color="black",
         )
         badge.grid(row=0, column=0, sticky="nw", padx=(12, 8), pady=(12, 0))
 
         title_label = ctk.CTkLabel(
-            self, text=result.title or "(无标题)", font=ctk.CTkFont(size=15, weight="bold"),
+            self, text=result.title or "(无标题)", font=font(15, "bold"),
             wraplength=560, anchor="w", justify="left",
         )
         title_label.grid(row=0, column=1, sticky="nw", padx=(0, 8), pady=(10, 0))
@@ -85,17 +89,17 @@ class ResultCard(ctk.CTkFrame):
         if not result.cover_urls:
             self._cover_label.configure(
                 text=result.platform, fg_color=platform_color,
-                text_color="black", font=ctk.CTkFont(size=13, weight="bold"))
+                text_color="black", font=font(13, "bold"))
 
         meta_parts = [result.author, result.duration_text, result.timestamp]
         meta_line = " · ".join(p for p in meta_parts if p)
-        meta = ctk.CTkLabel(self, text=meta_line or " ", font=ctk.CTkFont(size=12),
+        meta = ctk.CTkLabel(self, text=meta_line or " ", font=font(12),
                             text_color=("gray40", "gray65"), anchor="w")
         meta.grid(row=1, column=1, sticky="nw", padx=(0, 8))
 
         if result.is_error:
             error = ctk.CTkLabel(
-                self, text=f"解析失败：{result.error}", font=ctk.CTkFont(size=12),
+                self, text=f"解析失败：{result.error}", font=font(12),
                 text_color="#FF5252", anchor="w", wraplength=560, justify="left",
             )
             error.grid(row=2, column=1, columnspan=2, sticky="nw", padx=(0, 8))
@@ -103,7 +107,7 @@ class ResultCard(ctk.CTkFrame):
             self._cover_label.grid_remove()
         elif not result.has_media:
             hint = ctk.CTkLabel(
-                self, text="未解析到可用媒体直链", font=ctk.CTkFont(size=12),
+                self, text="未解析到可用媒体直链", font=font(12),
                 text_color=("gray40", "gray60"), anchor="w",
             )
             hint.grid(row=2, column=1, columnspan=2, sticky="nw", padx=(0, 8))
@@ -115,7 +119,7 @@ class ResultCard(ctk.CTkFrame):
         for col, item in enumerate(result.items):
             box = ctk.CTkCheckBox(checkbox_frame,
                                   text=item.name or f"{item.kind} {item.index}",
-                                  font=ctk.CTkFont(size=13),
+                                  font=font(13),
                                   checkbox_width=20, checkbox_height=20)
             box.select()
             box.grid(row=0, column=col, padx=(0, 12))
@@ -133,7 +137,7 @@ class ResultCard(ctk.CTkFrame):
         self._progress.grid(row=4, column=2, sticky="ew", padx=(0, 8), pady=(14, 10))
         self.grid_columnconfigure(2, weight=1)
 
-        self._status_label = ctk.CTkLabel(self, text="", font=ctk.CTkFont(size=11),
+        self._status_label = ctk.CTkLabel(self, text="", font=font(11),
                                           text_color=("gray40", "gray60"), anchor="w")
         self._status_label.grid(row=5, column=1, columnspan=3, sticky="w",
                                 padx=(12, 8), pady=(0, 8))
@@ -183,15 +187,19 @@ class MediaToolApp(ctk.CTk):
         self.geometry("1100x760")
         self.minsize(900, 600)
 
-        self.engine = ParseEngine()
+        self.config = AppConfig.load()
+        self.engine = self._build_engine()
         self._downloader: Optional[MediaDownloader] = None
         self._out_dir = Path.cwd() / "downloads"
         self._cards: list[ResultCard] = []
         self._busy = False
+        self._active_control: Optional[DownloadControl] = None
         self._ui_queue: queue.Queue = queue.Queue()
         self.after(50, self._drain_ui_queue)
 
         self._build_layout()
+        if self.config.proxy_url:
+            self.status_label.configure(text=f"代理已启用：{self.config.proxy_url}")
 
     # ── 布局 ─────────────────────────────────
 
@@ -206,28 +214,36 @@ class MediaToolApp(ctk.CTk):
         sidebar.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(sidebar, text="粘贴链接（支持多行，自动识别平台）",
-                     font=ctk.CTkFont(size=13, weight="bold"),
+                     font=font(13, "bold"),
                      anchor="w").grid(row=0, column=0, sticky="w", padx=14, pady=(14, 6))
 
         self.input_box = ctk.CTkTextbox(sidebar, height=150, wrap="word",
-                                        font=ctk.CTkFont(size=13))
+                                        font=font(13))
         self.input_box.grid(row=1, column=0, sticky="ew", padx=14)
 
         self.parse_button = ctk.CTkButton(sidebar, text="解析链接", height=36,
                                           command=self._on_parse)
         self.parse_button.grid(row=2, column=0, sticky="ew", padx=14, pady=(10, 4))
-        self.clear_button = ctk.CTkButton(sidebar, text="清空", height=28,
+        btn_row = ctk.CTkFrame(sidebar, fg_color="transparent")
+        btn_row.grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 10))
+        btn_row.grid_columnconfigure(0, weight=1)
+        btn_row.grid_columnconfigure(1, weight=1)
+        self.clear_button = ctk.CTkButton(btn_row, text="清空", height=28,
                                           fg_color="transparent", border_width=1,
                                           command=self._on_clear)
-        self.clear_button.grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 10))
+        self.clear_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        self.settings_button = ctk.CTkButton(btn_row, text="设置", height=28,
+                                             fg_color="transparent", border_width=1,
+                                             command=self._open_settings)
+        self.settings_button.grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
-        ctk.CTkLabel(sidebar, text="输出目录", font=ctk.CTkFont(size=13, weight="bold"),
+        ctk.CTkLabel(sidebar, text="输出目录", font=font(13, "bold"),
                      anchor="w").grid(row=4, column=0, sticky="w", padx=14, pady=(6, 4))
 
         out_row = ctk.CTkFrame(sidebar, fg_color="transparent")
         out_row.grid(row=5, column=0, sticky="ew", padx=14)
         out_row.grid_columnconfigure(0, weight=1)
-        self.out_entry = ctk.CTkEntry(out_row, font=ctk.CTkFont(size=12))
+        self.out_entry = ctk.CTkEntry(out_row, font=font(12))
         self.out_entry.insert(0, str(self._out_dir))
         self.out_entry.grid(row=0, column=0, sticky="ew")
         self.out_entry.bind("<Return>", lambda _e: self._on_out_dir_changed())
@@ -240,10 +256,25 @@ class MediaToolApp(ctk.CTk):
         self.download_selected_button.grid(row=6, column=0, sticky="ew",
                                            padx=14, pady=(12, 4))
 
-        self.status_label = ctk.CTkLabel(sidebar, text="就绪", font=ctk.CTkFont(size=12),
+        # 下载控制：暂停/继续 + 取消（下载期间可用）
+        ctrl_row = ctk.CTkFrame(sidebar, fg_color="transparent")
+        ctrl_row.grid(row=7, column=0, sticky="ew", padx=14)
+        ctrl_row.grid_columnconfigure(0, weight=1)
+        ctrl_row.grid_columnconfigure(1, weight=1)
+        self.pause_button = ctk.CTkButton(ctrl_row, text="暂停", height=28,
+                                          state="disabled",
+                                          command=self._on_pause_toggle)
+        self.pause_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        self.cancel_button = ctk.CTkButton(ctrl_row, text="取消下载", height=28,
+                                           fg_color="#B03030", hover_color="#D04040",
+                                           state="disabled",
+                                           command=self._on_cancel_download)
+        self.cancel_button.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+
+        self.status_label = ctk.CTkLabel(sidebar, text="就绪", font=font(12),
                                          text_color=("gray40", "gray60"),
                                          anchor="w", wraplength=400, justify="left")
-        self.status_label.grid(row=7, column=0, sticky="w", padx=14, pady=(8, 14))
+        self.status_label.grid(row=8, column=0, sticky="w", padx=14, pady=(8, 14))
 
         self.results_frame = ctk.CTkScrollableFrame(self, corner_radius=10,
                                                     fg_color="transparent")
@@ -321,6 +352,24 @@ class MediaToolApp(ctk.CTk):
         self._clear_cards()
         self.status_label.configure(text="已清空")
 
+    # ── 设置 ─────────────────────────────────────
+
+    def _build_engine(self) -> ParseEngine:
+        return ParseEngine(bilibili_cookie=self.config.bilibili_cookie,
+                           proxy=self.config.proxy_url)
+
+    def _open_settings(self) -> None:
+        SettingsDialog(self, self.config, lambda: self.engine,
+                       on_save=self._apply_settings, ui_post=self._ui)
+
+    def _apply_settings(self, config: AppConfig) -> None:
+        self.config = config
+        config.save()
+        self.engine = self._build_engine()
+        self._downloader = None  # 下次下载时按新代理重建
+        proxy_note = f"（代理：{config.proxy_url}）" if config.proxy_url else ""
+        self.status_label.configure(text=f"设置已保存{proxy_note}")
+
     def _cover_worker(self, card: ResultCard, result: ParseResult) -> None:
         try:
             image = self._fetch_cover(result.cover_urls[0])
@@ -334,7 +383,10 @@ class MediaToolApp(ctk.CTk):
         from PIL import Image
 
         async def _get() -> bytes:
-            async with aiohttp.ClientSession(headers={"User-Agent": DEFAULT_UA}) as session:
+            session_kwargs: dict = {"headers": {"User-Agent": DEFAULT_UA}}
+            if self.config.proxy_url:
+                session_kwargs["proxy"] = self.config.proxy_url
+            async with aiohttp.ClientSession(**session_kwargs) as session:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                     resp.raise_for_status()
                     return await resp.read()
@@ -348,7 +400,7 @@ class MediaToolApp(ctk.CTk):
 
     def _ensure_downloader(self, out_dir: Path) -> MediaDownloader:
         if self._downloader is None or self._downloader.out_dir != out_dir:
-            self._downloader = MediaDownloader(out_dir)
+            self._downloader = MediaDownloader(out_dir, proxy=self.config.proxy_url)
             self._out_dir = out_dir
         return self._downloader
 
@@ -378,6 +430,38 @@ class MediaToolApp(ctk.CTk):
             return
         self._start_download_jobs(jobs)
 
+    # ── 下载控制（暂停/继续/取消）───────────────────
+
+    def _set_control_buttons(self, active: bool, paused: bool = False) -> None:
+        self.pause_button.configure(
+            state="normal" if active else "disabled",
+            text="继续" if paused else "暂停",
+        )
+        self.cancel_button.configure(state="normal" if active else "disabled")
+
+    def _on_pause_toggle(self) -> None:
+        control = self._active_control
+        if control is None:
+            return
+        if control.is_paused:
+            control.resume()
+            self.pause_button.configure(text="暂停")
+            self.status_label.configure(text="继续下载…")
+        else:
+            control.pause()
+            self.pause_button.configure(text="继续")
+            self.status_label.configure(text="已暂停")
+
+    def _on_cancel_download(self) -> None:
+        control = self._active_control
+        if control is None:
+            return
+        control.cancel()
+        self.cancel_button.configure(state="disabled")
+        self.status_label.configure(text="正在取消…")
+
+    # ── 下载执行 ────────────────────────────────
+
     def _start_download_jobs(self, jobs) -> None:
         if self._busy:
             self.status_label.configure(text="正在处理中，请稍候")
@@ -386,23 +470,41 @@ class MediaToolApp(ctk.CTk):
             card.set_downloading(True)
         self._set_busy(True, f"开始下载 {sum(len(items) for _, _, items in jobs)} 个媒体…")
         out_dir = Path(self.out_entry.get().strip() or str(self._out_dir))
-        threading.Thread(target=self._download_worker, args=(jobs, out_dir),
+        control = DownloadControl()
+        self._active_control = control
+        self._set_control_buttons(True)
+        threading.Thread(target=self._download_worker, args=(jobs, out_dir, control),
                          daemon=True).start()
 
-    def _download_worker(self, jobs, out_dir: Path) -> None:
+    def _download_worker(self, jobs, out_dir: Path, control: DownloadControl) -> None:
         downloader = self._ensure_downloader(out_dir)
+        done_cards: set = set()
+        cancelled = False
         try:
             for card, result, items in jobs:
                 sub_result = replace(result, items=items)
 
-                async def progress(label, done, total):
+                async def progress(label, done, total, c=card):
                     self._ui(lambda l=label, d=done, t=total:
-                               card.set_progress(l, d, t))
+                               c.set_progress(l, d, t))
 
-                summary = downloader.download_result_sync(sub_result, progress)
+                summary = downloader.download_result_sync(sub_result, progress, control)
+                done_cards.add(card)
                 self._ui(lambda s=summary, c=card: c.finish_download(s))
             self._ui(lambda: self._set_busy(False, "下载完成"))
+        except TaskCancelled:
+            cancelled = True
+            self._ui(lambda: self._set_busy(False, "下载已取消"))
         except Exception as exc:  # noqa: BLE001
             self._ui(lambda: self._set_busy(False, f"下载出错：{exc}"))
         finally:
+            for card, _result, _items in jobs:
+                if card not in done_cards:
+                    # 取消/出错时把未完成卡片的按钮恢复可用
+                    self._ui(lambda c=card: c.set_downloading(False))
+            if cancelled:
+                # 中断下载管理器内可能仍在运行的任务（管理器保持可复用）
+                downloader.cancel_active()
+            self._ui(lambda: self._set_control_buttons(False))
+            self._active_control = None
             downloader.shutdown()

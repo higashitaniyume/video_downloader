@@ -780,6 +780,13 @@ class DownloadManager:
         nonce = uuid.uuid4().hex[:8]
         return f"{platform}_{url_hash}_{timestamp}_{nonce}"
 
+    def cancel_active_downloads(self) -> None:
+        """取消当前批次仍在运行的任务（不置 shutting_down，可继续复用）。"""
+        tasks = list(self._active_tasks)
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
     async def shutdown(self):
         """取消所有活动下载任务。"""
         self._shutting_down = True
