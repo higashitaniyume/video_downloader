@@ -30,23 +30,16 @@ jobs:
         run: chmod +x android/gradlew
 
       - name: 配置签名密钥
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -n "$SIGNING_KEY" ]; then
-            echo "$SIGNING_KEY" | base64 -d > android/app/key.jks
-            cat > android/local.properties << 'EOF'
-RELEASE_STORE_FILE=key.jks
-EOF
-            printf "RELEASE_STORE_PASSWORD=%s\n" "$KEY_STORE_PASSWORD" >> android/local.properties
-            printf "RELEASE_KEY_ALIAS=%s\n" "$KEY_ALIAS" >> android/local.properties
-            printf "RELEASE_KEY_PASSWORD=%s\n" "$KEY_PASSWORD" >> android/local.properties
+          if [ -n "${{ secrets.SIGNING_KEY }}" ]; then
+            echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/app/key.jks
+            echo "RELEASE_STORE_FILE=key.jks" > android/local.properties
+            echo "RELEASE_STORE_PASSWORD=${{ secrets.KEY_STORE_PASSWORD }}" >> android/local.properties
+            echo "RELEASE_KEY_ALIAS=${{ secrets.ALIAS }}" >> android/local.properties
+            echo "RELEASE_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/local.properties
             echo "Signing key configured."
           else
-            echo "No signing key found. Will build debug APK."
+            echo "No signing key. Will build debug APK."
           fi
 
       - name: 编译 APK
