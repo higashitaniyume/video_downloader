@@ -66,6 +66,7 @@ class DownloadService : Service() {
         val formatIds = intent?.getStringArrayListExtra("format_ids") ?: arrayListOf()
         val names = intent?.getStringArrayListExtra("names") ?: arrayListOf()
         val kinds = intent?.getStringArrayListExtra("kinds") ?: arrayListOf()
+        val directUrls = intent?.getStringArrayListExtra("direct_urls") ?: arrayListOf()
 
         // Start service as foreground immediately
         val notification = createNotification("Starting download for: $title", 0, 100)
@@ -73,7 +74,7 @@ class DownloadService : Service() {
 
         serviceScope.launch {
             try {
-                runDownload(url, title, platform, formatIds, names, kinds)
+                runDownload(url, title, platform, formatIds, names, kinds, directUrls)
             } finally {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -89,7 +90,8 @@ class DownloadService : Service() {
         platform: String,
         formatIds: List<String>,
         names: List<String>,
-        kinds: List<String>
+        kinds: List<String>,
+        directUrls: List<String>
     ) {
         val python = Python.getInstance()
         
@@ -122,10 +124,16 @@ class DownloadService : Service() {
         // Construct ParseResult
         val mediaItemsPyList = python.getBuiltins().get("list")!!.call()
         for (i in formatIds.indices) {
+            val itemUrlsPy = python.getBuiltins().get("list")!!.call()
+            if (i < directUrls.size && directUrls[i].isNotBlank()) {
+                directUrls[i].split("\t").filter { it.isNotBlank() }.forEach { u ->
+                    itemUrlsPy.callAttr("append", u)
+                }
+            }
             val item = mediaItemClass.call(
                 i + 1,
                 kinds[i],
-                python.getBuiltins().get("list")!!.call(), // urls
+                itemUrlsPy,
                 names[i],
                 formatIds[i]
             )
@@ -135,10 +143,16 @@ class DownloadService : Service() {
         val rawDict = python.getBuiltins().get("dict")!!.call()
         rawDict.callAttr("__setitem__", "webpage_url", url)
 
+        val headersDict = python.getBuiltins().get("dict")!!.call()
+        if (platform.contains("douyin", ignoreCase = true) || url.contains("douyin", ignoreCase = true)) {
+            headersDict.callAttr("__setitem__", "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0")
+            headersDict.callAttr("__setitem__", "Referer", "https://www.douyin.com/")
+        }
+
         val parseResult = parseResultClass.call(
             url,
             platform,
-            "yt-dlp",
+            if (platform.contains("douyin", ignoreCase = true)) "douyin" else "yt-dlp",
             title,
             "", // author
             "", // desc
@@ -146,8 +160,8 @@ class DownloadService : Service() {
             0,  // duration
             python.getBuiltins().get("list")!!.call(), // covers
             mediaItemsPyList,
-            python.getBuiltins().get("dict")!!.call(), // video_headers
-            python.getBuiltins().get("dict")!!.call(), // image_headers
+            headersDict, // video_headers
+            headersDict, // image_headers
             rawDict,
             null // error
         )

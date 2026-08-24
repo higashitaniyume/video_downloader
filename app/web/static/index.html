@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Downloader - 跨平台媒体解析与下载 Web 界面</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="dark-theme">
+  <!-- Background Glow Accents -->
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <div class="app-layout">
+    <!-- Navbar -->
+    <header class="navbar">
+      <div class="nav-brand">
+        <div class="logo-icon">⚡</div>
+        <div class="brand-info">
+          <h1>Video Downloader</h1>
+          <span class="version-tag">Web Edition v1.0.0</span>
+        </div>
+      </div>
+      <div class="nav-actions">
+        <button id="btn-open-folder" class="btn btn-secondary btn-sm" title="在系统资源管理器中打开下载文件夹">
+          📁 打开保存目录
+        </button>
+        <button id="btn-view-logs" class="btn btn-secondary btn-sm" title="查看运行日志">
+          📝 日志
+        </button>
+        <button id="btn-open-settings" class="btn btn-secondary btn-sm" title="配置代理、清晰度与 Cookie">
+          ⚙️ 设置
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="main-container">
+      <!-- Input Section -->
+      <section class="card input-card">
+        <div class="card-header">
+          <div class="section-title">
+            <span class="icon">🔗</span>
+            <h2>粘贴媒体链接</h2>
+          </div>
+          <span class="hint">支持多行、文本混杂链接，支持 B站 / 抖音 / YouTube / 快手 / 微博等 1900+ 平台</span>
+        </div>
+        <div class="card-body">
+          <div class="textarea-wrapper">
+            <textarea id="url-input" placeholder="请在此粘贴视频、图集或音频分享链接（支持直接粘贴包含文字的分享口令，系统自动提取 URL）..."></textarea>
+            <button id="btn-paste" class="btn-paste" title="从剪贴板粘贴">📋 快捷粘贴</button>
+          </div>
+          <div class="input-toolbar">
+            <div class="toolbar-left">
+              <button id="btn-clear" class="btn btn-ghost btn-sm">🧹 清空</button>
+            </div>
+            <div class="toolbar-right">
+              <button id="btn-parse" class="btn btn-primary">
+                <span class="btn-text">⚡ 开始解析</span>
+                <span class="spinner hidden"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Batch Action Bar (Visible when there are parsed results) -->
+      <section id="batch-bar" class="batch-bar hidden">
+        <div class="batch-info">
+          <span id="batch-stats">已解析 0 个资源</span>
+          <span class="save-dir-hint">保存至：<code id="display-out-dir">./downloads</code></span>
+        </div>
+        <div class="batch-actions">
+          <button id="btn-select-all" class="btn btn-ghost btn-sm">全选最高画质</button>
+          <button id="btn-download-selected" class="btn btn-success">
+            📥 一键下载全部选中项
+          </button>
+        </div>
+      </section>
+
+      <!-- Results Grid / List -->
+      <section id="results-container" class="results-container">
+        <!-- Result cards will be injected here via JavaScript -->
+        <div id="empty-state" class="empty-state">
+          <div class="empty-icon">🎬</div>
+          <p class="empty-title">暂无解析结果</p>
+          <p class="empty-desc">在上方输入框粘贴链接并点击「开始解析」</p>
+        </div>
+      </section>
+
+      <!-- Live Download Tasks Section -->
+      <section id="tasks-section" class="tasks-section card">
+        <div class="card-header tasks-header">
+          <div class="section-title">
+            <span class="icon">📥</span>
+            <h2>下载任务队列</h2>
+            <span id="task-count-badge" class="badge badge-purple">0</span>
+          </div>
+          <div class="tasks-actions">
+            <button id="btn-clear-tasks" class="btn btn-ghost btn-xs">清除已结束任务</button>
+          </div>
+        </div>
+        <div id="tasks-list" class="tasks-list">
+          <div id="no-tasks" class="no-tasks-hint">当前暂无正在进行的下载任务</div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>Video Downloader · Powered by yt-dlp & FFmpeg · 本地服务运行中</p>
+    </footer>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal-overlay hidden">
+    <div class="modal card">
+      <div class="modal-header">
+        <div class="section-title">
+          <span class="icon">⚙️</span>
+          <h2>应用设置</h2>
+        </div>
+        <button id="btn-close-settings" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Proxy Setting -->
+        <div class="form-group">
+          <label for="cfg-proxy">全局代理地址 (Proxy URL)</label>
+          <div class="input-with-action">
+            <input type="text" id="cfg-proxy" placeholder="如 http://127.0.0.1:7890（海外平台必填）">
+            <button id="btn-test-proxy" class="btn btn-secondary btn-sm">测试代理</button>
+          </div>
+          <span id="proxy-test-result" class="form-hint">留空表示直连。修改后立即对解析与下载生效。</span>
+        </div>
+
+        <!-- Quality Setting -->
+        <div class="form-group">
+          <label for="cfg-quality">最高清晰度上限</label>
+          <select id="cfg-quality">
+            <option value="auto">自动（获取最高可用画质，推荐）</option>
+            <option value="4k">4K (2160P)</option>
+            <option value="1080p">1080P 全高清</option>
+            <option value="720p">720P 高清</option>
+            <option value="480p">480P 标清</option>
+            <option value="360p">360P 流畅</option>
+          </select>
+          <span class="form-hint">解析时自动过滤或限制高于该档位的视频流。</span>
+        </div>
+
+        <!-- Cookie Setting -->
+        <div class="form-group">
+          <label for="cfg-browser">读取浏览器登录 Cookie</label>
+          <select id="cfg-browser">
+            <option value="">不读取（匿名解析）</option>
+            <option value="edge">Microsoft Edge</option>
+            <option value="chrome">Google Chrome</option>
+            <option value="firefox">Mozilla Firefox</option>
+            <option value="brave">Brave</option>
+            <option value="opera">Opera</option>
+            <option value="vivaldi">Vivaldi</option>
+          </select>
+          <span class="form-hint">让 yt-dlp 直接读取浏览器已登录状态（解锁 B站高清、YouTube 年龄限制、Instagram 等）。</span>
+        </div>
+
+        <!-- Cookies File Setting -->
+        <div class="form-group">
+          <label for="cfg-cookie-file">本地 cookies.txt 文件路径</label>
+          <input type="text" id="cfg-cookie-file" placeholder="如 C:\path\to\cookies.txt">
+          <span class="form-hint">Netscape 格式 cookies 文件路径，优先级高于浏览器 Cookie。</span>
+        </div>
+
+        <!-- Output Folder Setting -->
+        <div class="form-group">
+          <label for="cfg-out-dir">默认下载保存路径</label>
+          <input type="text" id="cfg-out-dir" placeholder="如 C:\Downloads">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-cancel-settings" class="btn btn-ghost">取消</button>
+        <button id="btn-save-settings" class="btn btn-primary">保存设置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Logs Modal -->
+  <div id="logs-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg card">
+      <div class="modal-header">
+        <div class="section-title">
+          <span class="icon">📝</span>
+          <h2>系统运行日志</h2>
+        </div>
+        <button id="btn-close-logs" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <pre id="logs-viewer" class="logs-pre">正在加载日志...</pre>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-refresh-logs" class="btn btn-secondary btn-sm">🔄 刷新</button>
+        <button id="btn-close-logs-footer" class="btn btn-primary btn-sm">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

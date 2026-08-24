@@ -98,6 +98,9 @@ class ParseEngine:
                 cookies_file=ydl_cookies_file,
             )
 
+        from .parsers.douyin import DouyinParser
+        self.douyin_parser = DouyinParser(proxy=self.proxy)
+
     def extract_links(self, text: str) -> list[str]:
         """同步提取文本中的可解析链接（按出现顺序、去重）。"""
         from .ydl import extract_all_urls
@@ -109,10 +112,21 @@ class ParseEngine:
         if not self.ydl_enabled or not self._ydl_engine:
             return results
 
+        from .parsers.douyin import DouyinParser
         from .ydl import extract_all_urls
         urls = extract_all_urls(text)
 
         async def parse_one(url: str) -> ParseResult:
+            # 1. 优先使用抖音专属解析器（无需 Cookie、支持无水印与图集）
+            if DouyinParser.can_parse(url):
+                try:
+                    dy_result = await self.douyin_parser.parse(url)
+                    if dy_result:
+                        return dy_result
+                except Exception as exc:
+                    logger.debug("抖音解析器未能解析，转入 yt-dlp 兜底: %s", exc)
+
+            # 2. yt-dlp 兜底
             ydl_result, ydl_error = await asyncio.to_thread(
                 self._ydl_engine.extract, url)
             if ydl_result is None:

@@ -34,6 +34,8 @@ class DownloadedFile:
     path: Path
     label: str
     size_bytes: int
+    kind: str = "video"
+
 
 
 @dataclass

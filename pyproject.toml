@@ -1,6 +1,6 @@
 [project]
 name = "video-downloader"
-version = "1.0.0"
+version = "1.2.0"
 description = "视频/媒体链接解析与下载小工具：基于 yt-dlp 的 GUI/CLI 双入口包装器"
 readme = "README.md"
 requires-python = ">=3.12"

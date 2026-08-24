@@ -1,17 +1,25 @@
 # video_downloader
 
-这是一个为强大命令行媒体下载工具 `yt-dlp` 开发的现代图形界面包装器（Windows 桌面 GUI + CLI 双入口）。
+这是一个基于强大的命令行媒体下载工具 `yt-dlp` 开发的现代化跨平台视频/音频下载工具，支持 **Windows 桌面端 (GUI)**、**Web 网页端**、**命令行 (CLI)** 与 **Android 安卓端 (原生 App)**。
 
 粘贴一个链接即可自动通过 `yt-dlp` 解析出标题、作者、时长、封面和全部可用的媒体格式档位，勾选后即可一键下载到本地。支持国内外 1900+ 平台的解析与下载。
 
 ## 功能特性
 
-- **GUI 桌面工具**（深色主题）：粘贴多行链接 → 解析卡片（平台/标题/作者/时长/封面）→ 勾选媒体格式（如不同分辨率视频/单独音频）→ 实时下载进度。
-- **CLI 命令行工具**：解析链接、输出 JSON 格式元数据、批量下载，方便脚本化集成。
-- **下载能力强**：支持通过 `yt-dlp` 进行视频流下载，对于音视频分离的平台，自动调用本地 `ffmpeg` 进行合并。
-- **平台登录 Cookie 读取**：可在设置中配置直接读取浏览器已登录的 Cookie（Edge / Chrome / Firefox）或指定本地 `cookies.txt` 文件，让 B站高清、YouTube 限制内容、Instagram 等需要登录的平台也能解析和下载。
-- **清晰度上限控制**：支持全局设置最高清晰度（自动 / 4K / 1080P / 720P / 480P / 360P），自动隐藏/过滤高于该清晰度的格式。
-- **全局代理**：设置中可一键启用并测试本地代理，确保海外平台（YouTube 等）解析和下载的连通性。
+- **GUI 桌面端**（深色主题）：现代 CustomTkinter 界面，粘贴多行链接 → 解析卡片（平台/标题/作者/时长/封面）→ 勾选媒体格式（不同清晰度视频/单独音频）→ 实时下载进度与合并。
+- **Web 网页端**（内建 HTTP 服务）：启动时后台自动托管 Web 界面（默认 `http://127.0.0.1:5200`），支持在任意浏览器中打开访问；提供现代化玻璃拟态 UI、任务队列管理与实时下载进度控制。
+- **Android 安卓端**（原生 App）：基于 Jetpack Compose + Chaquopy Python 运行时 + 移动端定制 FFmpeg，支持剪贴板快捷粘贴、防盗链封面预览、任务队列管理与系统原生文件分享。
+- **CLI 命令行工具**：解析链接、输出 JSON 格式元数据、批量下载，方便脚本化与自动化集成。
+- **强大的下载与合并能力**：全面支持 `yt-dlp` 视频流下载；音视频分离的流自动调用本地 `ffmpeg`（桌面与安卓端内置）进行高质量合并。
+- **平台登录 Cookie 读取**：可在设置中配置直接读取浏览器已登录的 Cookie（Edge / Chrome / Firefox）或指定本地 `cookies.txt` 文件，轻松下载 B站高清、YouTube 限制内容、Instagram 等需登录内容。
+- **清晰度上限控制**：支持全局设置最高清晰度（自动 / 4K / 1080P / 720P / 480P / 360P），自动过滤高于该档位的格式。
+- **全局代理与连通性测试**：一键配置并测试本地代理，确保海外平台（YouTube、TikTok 等）顺畅解析与下载。
+
+## 下载与发布
+
+在 [GitHub Releases](../../releases) 页面中可直接下载预编译好的二进制文件与安装包：
+- **Windows 桌面端**：`video-downloader-vX.X.X-windows-x64.zip`（含单文件 `video-downloader-vX.X.X.exe` 与免安装 `ffmpeg` / `ffprobe` 工具）
+- **Android 安卓端**：`video-downloader-vX.X.X.apk`（支持 arm64-v8a 架构 Android 11+ 设备）
 
 ## 支持的平台
 
@@ -25,27 +33,38 @@
 pip install -e .
 
 # 或手动装依赖
-pip install customtkinter pillow "yt-dlp[default]"
+pip install customtkinter pillow aiohttp "yt-dlp[default]"
 ```
 
 音视频合并需要系统安装 ffmpeg（`ffmpeg` 在 PATH 中即可）。
 
 ## 用法
 
-### GUI
+### 1. GUI 桌面端
 
 ```bash
 python main.py
 ```
 
-粘贴链接（可多行） → 点击「解析链接」 → 勾选卡片上的格式 → 点击「下载全部」。
+* 启动后桌面窗口与后台 Web 服务同时就绪。
+* 点击工具栏的「🌐 网页端」按钮，即可快速在默认浏览器中打开 Web 界面。
+* 粘贴链接（可多行） → 点击「⚡ 解析链接」 → 勾选格式卡片 → 点击「📥 下载全部」。
 
-在左下角点击「设置」，可以配置：
-1. **代理配置**：支持填写本地代理（如 `http://127.0.0.1:7890`），点「测试代理」可测试网络连通性。
-2. **最高清晰度上限**：限制获取的格式档位。
-3. **平台登录 Cookie**：选择已登录相应平台的浏览器（Edge/Chrome/Firefox），使 yt-dlp 能读取登录态。
+### 2. Web 网页端（独立无头模式）
 
-### CLI
+若希望仅在浏览器中使用或在服务器上无窗口运行：
+
+```bash
+# 启动 Web 服务并自动唤起默认浏览器
+python main.py --web-only
+
+# 指定自定义端口启动
+python main.py --web-only --port 5210
+```
+
+访问 `http://127.0.0.1:5200` 即可使用完整的解析、封面防盗链代理预览、分档下载与任务暂停/取消功能。
+
+### 3. CLI 命令行
 
 ```bash
 python cli.py "https://www.bilibili.com/video/BVxxxxxx"
@@ -56,9 +75,9 @@ python cli.py --proxy http://127.0.0.1:7890 --download "https://www.youtube.com/
 python cli.py --ydl-cookies-from-browser edge "https://www.instagram.com/p/xxx"
 ```
 
-### Android (安卓客户端)
+### 4. Android (安卓客户端)
 
-本项目同时包含一个完整的安卓客户端（位于 `android/` 目录），提供移动端的原生下载体验。
+本项目包含完整的安卓客户端工程（位于 `android/` 目录），提供移动端的原生下载体验。
 
 * **核心架构**：基于 **Jetpack Compose** 现代化声明式 UI 开发，后台通过 **Chaquopy** 桥接并运行核心 Python 解析引擎；同时打包了移动端定制版 **FFmpeg** 库以提供移动端音视频后台合并合成支持。
 * **主要特性**：
@@ -80,8 +99,8 @@ python cli.py --ydl-cookies-from-browser edge "https://www.instagram.com/p/xxx"
 ## 项目结构
 
 ```
-main.py           GUI 入口（customtkinter）
-cli.py            CLI 入口
+main.py           主入口（GUI + Web 综合启动 / --web-only 模式）
+cli.py            CLI 命令行入口
 app/
   common.py       共享模型与文件名净化工具
   engine.py       解析引擎：提取链接，调用 YdlEngine 解析元数据
@@ -92,10 +111,15 @@ app/
   portable.py     便携运行支持（EXE 打包支持）
   theme.py        UI 字体工具
   settings_dialog.py  设置窗口（代理 + 清晰度 + 浏览器 Cookie）
-  gui.py          图形界面主窗口
+  gui.py          图形界面主窗口（CustomTkinter + Web 联动）
+  web/            Web 服务模块
+    server.py     aiohttp.web 后台服务与 REST API 路由
+    static/       Web 单页应用静态资源（HTML / CSS / JS）
 ```
+
 ## 已知限制
 
 - 部分平台（微博长视频、Twitter、Vimeo、Instagram 等）需要登录态，解析或下载可能失败；可在设置/CLI 中为 yt-dlp 配置浏览器 Cookie 或 cookies.txt 后重试。
 - 数据中心/海外 IP 访问部分平台（YouTube、SoundCloud、网易云音乐等）可能被风控拒绝，可配置代理。
 - 音视频合并依赖系统 ffmpeg。
+

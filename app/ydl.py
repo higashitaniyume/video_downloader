@@ -255,10 +255,11 @@ class YdlDownloader:
             label = f"{result.platform} · {item.name or f'{item.kind}{item.index}'}"
             try:
                 path = self._download_one(
-                    webpage_url, item, base_name, n, label, progress, control)
+                    webpage_url, item, base_name, n, label, progress, control, result=result)
                 if path:
                     summary.files.append(DownloadedFile(path=path, label=label,
-                                                        size_bytes=path.stat().st_size))
+                                                        size_bytes=path.stat().st_size,
+                                                        kind=item.kind))
             except TaskCancelled:
                 raise
             except Exception as exc:  # noqa: BLE001
@@ -274,7 +275,25 @@ class YdlDownloader:
         label: str,
         progress,
         control: Optional[DownloadControl] = None,
+        result: Optional[ParseResult] = None,
     ) -> Optional[Path]:
+        # 若存在有效直链（如抖音原画视频、图集、音频），优先使用轻量流式下载
+        if item.urls:
+            direct_url = item.urls[0]
+            headers = {}
+            if result:
+                headers = result.image_headers if item.kind == "image" else result.video_headers
+            if not headers:
+                headers = {"User-Agent": "Mozilla/5.0"}
+            try:
+                path = self._download_direct(direct_url, base_name, item, label, headers, progress, control)
+                if path:
+                    return path
+            except TaskCancelled:
+                raise
+            except Exception as exc:
+                logger.debug("直链快速下载失败，降级至 yt-dlp: %s", exc)
+
         format_spec = item.format_id or "best"
         # 视频档补音频合并（yt-dlp 无 ffmpeg 时自动降级）
         if item.kind == "video" and item.format_id:
@@ -333,3 +352,63 @@ class YdlDownloader:
         except OSError:
             pass  # 目录非空（有其它并发下载）则保留
         return dest
+
+    def _download_direct(
+        self,
+        url: str,
+        base_name: str,
+        item: MediaItem,
+        label: str,
+        headers: dict,
+        progress,
+        control: Optional[DownloadControl] = None,
+    ) -> Optional[Path]:
+        import urllib.request
+        ext = ".jpg" if item.kind == "image" else (".mp3" if item.kind == "audio" else ".mp4")
+        url_path = url.split("?")[0]
+        if "." in url_path[-6:]:
+            candidate_ext = "." + url_path.split(".")[-1].lower()
+            if candidate_ext in (".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mp3", ".m4a", ".flv", ".mov"):
+                ext = candidate_ext
+
+        dest = unique_path(self.out_dir, f"{base_name}_{item.name or item.kind}{ext}")
+        tmp_dest = dest.with_suffix(dest.suffix + ".part")
+
+        req = urllib.request.Request(url, headers=headers)
+        if self.proxy:
+            proxy_handler = urllib.request.ProxyHandler({'http': self.proxy, 'https': self.proxy})
+            opener = urllib.request.build_opener(proxy_handler)
+        else:
+            opener = urllib.request.build_opener()
+
+        try:
+            with opener.open(req, timeout=self.timeout) as resp:
+                total_str = resp.headers.get("Content-Length")
+                total = int(total_str) if total_str and total_str.isdigit() else None
+                done = 0
+                chunk_size = 64 * 1024
+                with open(tmp_dest, "wb") as f:
+                    while True:
+                        if control:
+                            control.sync_checkpoint()
+                        chunk = resp.read(chunk_size)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        done += len(chunk)
+                        if progress:
+                            progress(label, done, total)
+            tmp_dest.rename(dest)
+            return dest
+        except TaskCancelled:
+            try:
+                tmp_dest.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
+        except Exception as exc:
+            try:
+                tmp_dest.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise RuntimeError(f"直链下载异常: {exc}") from exc

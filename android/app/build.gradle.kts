@@ -34,8 +34,8 @@ android {
         applicationId = "top.valency.videodownloader"
         minSdk = 30
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 4
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -99,6 +99,7 @@ tasks.register<Copy>("syncPythonFiles") {
     exclude("gui.py")
     exclude("settings_dialog.py")
     exclude("theme.py")
+    exclude("web/**")
 }
 
 tasks.register("downloadFFmpeg") {

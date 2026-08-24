@@ -48,27 +48,45 @@ jobs:
           Copy-Item (Join-Path $binDir.FullName "bin\ffprobe.exe") . -Force
           Get-Item ffmpeg.exe, ffprobe.exe | Select-Object Name, Length
 
+      - name: 解析版本与项目名称
+        shell: pwsh
+        run: |
+          $content = Get-Content pyproject.toml -Raw -Encoding utf8
+          $projectName = if ($content -match 'name\s*=\s*"([^"]+)"') { $Matches[1] } else { "video-downloader" }
+          $pyVersion = if ($content -match 'version\s*=\s*"([^"]+)"') { $Matches[1] } else { "1.0.0" }
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+              $version = $env:GITHUB_REF_NAME
+          } else {
+              $version = "v$pyVersion"
+          }
+          $exeName = "$projectName-$version.exe"
+          $zipName = "$projectName-$version-windows-x64.zip"
+          "PROJECT_NAME=$projectName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "EXE_NAME=$exeName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: 构建 GUI 可执行文件（PyInstaller onefile）
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name video-downloader-GUI --collect-data customtkinter --collect-all yt_dlp main.py
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name "${{ env.PROJECT_NAME }}-${{ env.VERSION }}" --collect-data customtkinter --collect-all yt_dlp --add-data "app/web/static;app/web/static" main.py
 
       - name: 打包产物（exe + ffmpeg）
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path stage | Out-Null
-          Copy-Item dist\video-downloader-GUI.exe stage\
+          Copy-Item "dist\$env:EXE_NAME" stage\
           Copy-Item ffmpeg.exe stage\
           Copy-Item ffprobe.exe stage\
-          $zipName = "video-downloader-GUI-windows-x64-$($env:GITHUB_SHA.Substring(0,7)).zip"
-          Compress-Archive -Path stage\* -DestinationPath $zipName -Force
-          echo "artifact=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Get-Item $zipName | Select-Object Name, Length
+          Compress-Archive -Path stage\* -DestinationPath $env:ZIP_NAME -Force
+          Get-Item $env:ZIP_NAME, "stage\$env:EXE_NAME" | Select-Object Name, Length
 
       - name: 上传构建产物（Artifact）
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.artifact }}
-          path: ${{ env.artifact }}
+          name: ${{ env.PROJECT_NAME }}-${{ env.VERSION }}-windows-x64
+          path: |
+            ${{ env.ZIP_NAME }}
+            stage/${{ env.EXE_NAME }}
           if-no-files-found: error
           retention-days: 7
 
@@ -78,4 +96,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$env:GITHUB_REF_NAME" "$env:artifact" --generate-notes --title "video-downloader $env:GITHUB_REF_NAME"
+          if (gh release view "$env:GITHUB_REF_NAME" 2>$null) {
+            gh release upload "$env:GITHUB_REF_NAME" "$env:ZIP_NAME" "stage/$env:EXE_NAME" --clobber
+          } else {
+            gh release create "$env:GITHUB_REF_NAME" "$env:ZIP_NAME" "stage/$env:EXE_NAME" --generate-notes --title "$env:PROJECT_NAME $env:GITHUB_REF_NAME"
+          }

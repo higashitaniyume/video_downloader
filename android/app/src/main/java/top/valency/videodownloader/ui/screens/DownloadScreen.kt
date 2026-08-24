@@ -55,12 +55,30 @@ fun DownloadScreen() {
 
     var urlInput by remember { mutableStateOf("") }
     var isParsing by remember { mutableStateOf(false) }
-    var parseResult by remember { mutableStateOf<ParseResultUi?>(null) }
+    var parseResults by remember { mutableStateOf<List<ParseResultUi>>(emptyList()) }
     var parseError by remember { mutableStateOf<String?>(null) }
     val selectedItems = remember { mutableStateListOf<MediaItemUi>() }
     
     val activeDownloads by DownloadTracker.progress.collectAsState()
     val downloaderListState = rememberLazyListState()
+
+    fun triggerDownload(url: String, title: String, platform: String, itemsToDownload: List<MediaItemUi>) {
+        if (itemsToDownload.isEmpty()) return
+        val intent = Intent(context, DownloadService::class.java).apply {
+            putExtra("url", url)
+            putExtra("title", title)
+            putExtra("platform", platform)
+            putStringArrayListExtra("format_ids", ArrayList(itemsToDownload.map { it.formatId }))
+            putStringArrayListExtra("names", ArrayList(itemsToDownload.map { it.name }))
+            putStringArrayListExtra("kinds", ArrayList(itemsToDownload.map { it.kind }))
+            putStringArrayListExtra("direct_urls", ArrayList(itemsToDownload.map { it.urls.joinToString("\t") }))
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent)
+        } else {
+            context.startService(intent)
+        }
+    }
 
     LazyColumn(
         state = downloaderListState,
@@ -86,7 +104,7 @@ fun DownloadScreen() {
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         // Persistent Parser Error Card
@@ -157,46 +175,52 @@ fun DownloadScreen() {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "Paste Video URL",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold
+                        text = "支持单条或多行链接批量解析",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     OutlinedTextField(
                         value = urlInput,
                         onValueChange = { urlInput = it },
-                        placeholder = { Text("https://www.youtube.com/watch?...") },
                         modifier = Modifier.fillMaxWidth(),
-                        maxLines = 3
+                        placeholder = { Text("粘贴视频链接或分享文本（支持多行/多个链接）...", fontSize = 13.sp) },
+                        maxLines = 5,
+                        shape = RoundedCornerShape(8.dp)
                     )
-                    
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        TextButton(
+                        Button(
                             onClick = {
-                                try {
-                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                    val clip = clipboard.primaryClip
-                                    if (clip != null && clip.itemCount > 0) {
-                                        urlInput = clip.getItemAt(0).text?.toString() ?: ""
-                                    } else {
-                                        Toast.makeText(context, "剪贴板为空", Toast.LENGTH_SHORT).show()
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                val clipData = clipboard.primaryClip
+                                if (clipData != null && clipData.itemCount > 0) {
+                                    val text = clipData.getItemAt(0).text?.toString() ?: ""
+                                    if (text.isNotBlank()) {
+                                        urlInput = text
+                                        Toast.makeText(context, "已粘贴剪贴板内容", Toast.LENGTH_SHORT).show()
                                     }
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "无法从剪贴板读取数据", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                            modifier = Modifier.height(32.dp)
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
                         ) {
-                            Text("从剪贴板粘贴", fontSize = 13.sp)
+                            Text("粘贴剪贴板", fontSize = 13.sp)
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        TextButton(
-                            onClick = { urlInput = "" },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                            modifier = Modifier.height(32.dp)
+
+                        OutlinedButton(
+                            onClick = {
+                                urlInput = ""
+                                parseResults = emptyList()
+                                parseError = null
+                                selectedItems.clear()
+                            },
+                            modifier = Modifier.weight(1f)
                         ) {
                             Text("清空", fontSize = 13.sp)
                         }
@@ -205,29 +229,26 @@ fun DownloadScreen() {
                     Button(
                         onClick = {
                             if (urlInput.isBlank()) {
-                                Toast.makeText(context, "Please paste a URL first", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "请先输入或粘贴链接", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
                             isParsing = true
-                            parseResult = null
+                            parseResults = emptyList()
                             parseError = null
                             selectedItems.clear()
                             
-                            // Scroll to loader item when starting parse
                             scope.launch {
                                 delay(100)
-                                downloaderListState.animateScrollToItem(index = 2) // Index of parsing card
+                                downloaderListState.animateScrollToItem(index = 2)
                             }
 
                             scope.launch(Dispatchers.IO) {
                                 try {
                                     val python = Python.getInstance()
                                     
-                                    // Configure android data dir
                                     val os = python.getModule("os")
                                     os.get("environ")!!.callAttr("__setitem__", "ANDROID_DATA_DIR", context.filesDir.absolutePath)
                                     
-                                    // Load configuration to pass to engine
                                     val configModule = python.getModule("app.config")
                                     val appConfigClass = configModule.get("AppConfig")!!
                                     val config = appConfigClass.callAttr("load")
@@ -248,56 +269,82 @@ fun DownloadScreen() {
                                     val resultsList = resultsPy!!.asList()
                                     
                                     if (resultsList.isNotEmpty()) {
-                                        val res = resultsList[0]
-                                        val error = res!!.get("error")
-                                        if (error != null) {
-                                            withContext(Dispatchers.Main) {
-                                                parseError = error.toString()
-                                            }
-                                        } else {
-                                            val title = res!!.get("title")!!.toString()
-                                            val platform = res!!.get("platform")!!.toString()
-                                            val durationText = res!!.get("duration_text")!!.toString()
-                                            
-                                            val itemsList = res!!.get("items")!!.asList()
-                                            val itemsMapped = itemsList!!.map { itemPy ->
-                                                MediaItemUi(
-                                                    index = itemPy!!.get("index")!!.toInt(),
-                                                    kind = itemPy!!.get("kind")!!.toString(),
-                                                    name = itemPy!!.get("name")!!.toString(),
-                                                    formatId = itemPy!!.get("format_id")!!.toString()
+                                        val parsedList = mutableListOf<ParseResultUi>()
+                                        val errorsList = mutableListOf<String>()
+
+                                        for (res in resultsList) {
+                                            val error = res!!.get("error")
+                                            if (error != null) {
+                                                errorsList.add(error.toString())
+                                            } else {
+                                                val title = res.get("title")?.toString() ?: "（无标题）"
+                                                val platform = res.get("platform")?.toString() ?: "media"
+                                                val durationText = res.get("duration_text")?.toString() ?: ""
+                                                val resUrl = res.get("url")?.toString() ?: urlInput
+                                                
+                                                val itemsList = res.get("items")?.asList() ?: emptyList()
+                                                val itemsMapped = itemsList.map { itemPy ->
+                                                    val urlsPy = itemPy!!.get("urls")?.asList() ?: emptyList()
+                                                    MediaItemUi(
+                                                        parentUrl = resUrl,
+                                                        index = itemPy.get("index")!!.toInt(),
+                                                        kind = itemPy.get("kind")!!.toString(),
+                                                        name = itemPy.get("name")!!.toString(),
+                                                        formatId = itemPy.get("format_id")!!.toString(),
+                                                        urls = urlsPy.map { it.toString() }
+                                                    )
+                                                }
+                                                
+                                                val coverUrlsPy = res.get("cover_urls")?.asList() ?: emptyList()
+                                                var coverUrl = if (coverUrlsPy.isNotEmpty()) coverUrlsPy[0]!!.toString() else ""
+                                                if (coverUrl.startsWith("http://")) {
+                                                    coverUrl = coverUrl.replaceFirst("http://", "https://")
+                                                }
+
+                                                parsedList.add(
+                                                    ParseResultUi(
+                                                        url = resUrl,
+                                                        platform = platform,
+                                                        title = title,
+                                                        durationText = durationText,
+                                                        items = itemsMapped,
+                                                        coverUrl = coverUrl
+                                                    )
                                                 )
                                             }
-                                            
-                                            val coverUrlsPy = res!!.get("cover_urls")?.asList() ?: emptyList()
-                                            var coverUrl = if (coverUrlsPy.isNotEmpty()) coverUrlsPy[0]!!.toString() else ""
-                                            if (coverUrl.startsWith("http://")) {
-                                                coverUrl = coverUrl.replaceFirst("http://", "https://")
-                                            }
+                                        }
 
-                                            parseResult = ParseResultUi(
-                                                url = urlInput,
-                                                platform = platform,
-                                                title = title,
-                                                durationText = durationText,
-                                                items = itemsMapped,
-                                                coverUrl = coverUrl
-                                            )
-
-                                            // Auto scroll to results section
+                                        if (parsedList.isNotEmpty()) {
                                             withContext(Dispatchers.Main) {
+                                                parseResults = parsedList
+                                                // 默认全选每张卡片的第一个主要视频或图集全部图片
+                                                parsedList.forEach { card ->
+                                                    val primaryVideos = card.items.filter { it.kind == "video" }
+                                                    if (primaryVideos.isNotEmpty()) {
+                                                        selectedItems.add(primaryVideos.first())
+                                                    } else {
+                                                        selectedItems.addAll(card.items)
+                                                    }
+                                                }
+                                                if (errorsList.isNotEmpty()) {
+                                                    parseError = "部分解析失败: ${errorsList.joinToString("; ")}"
+                                                }
                                                 delay(200)
-                                                downloaderListState.animateScrollToItem(index = 4) // Index of results card
+                                                downloaderListState.animateScrollToItem(index = 3)
+                                            }
+                                        } else if (errorsList.isNotEmpty()) {
+                                            withContext(Dispatchers.Main) {
+                                                parseError = errorsList.joinToString("\n")
                                             }
                                         }
                                     } else {
                                         withContext(Dispatchers.Main) {
-                                            parseError = "No URL found in input"
+                                            parseError = "未在输入中提取到任何有效链接"
                                         }
                                     }
                                 } catch (e: Exception) {
                                     withContext(Dispatchers.Main) {
-                                        parseError = "Parse failed: ${e.message}"
+                                        parseError = "解析失败: ${e.message}"
                                     }
                                 } finally {
                                     isParsing = false
@@ -313,9 +360,9 @@ fun DownloadScreen() {
                                 strokeWidth = 2.dp
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Parsing...")
+                            Text("正在解析中...")
                         } else {
-                            Text("Parse Link", fontWeight = FontWeight.Bold)
+                            Text("开始解析", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -345,7 +392,7 @@ fun DownloadScreen() {
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = "正在努力解析链接，请稍候...",
+                            text = "正在努力并发解析链接，请稍候...",
                             fontWeight = FontWeight.Medium,
                             fontSize = 14.sp
                         )
@@ -354,166 +401,234 @@ fun DownloadScreen() {
             }
         }
 
-        // Results Section
-        item {
-            AnimatedVisibility(
-                visible = parseResult != null,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                parseResult?.let { result ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+        // Batch Download Action Toolbar (when multiple results parsed)
+        if (parseResults.isNotEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = result.platform.uppercase(),
-                                    color = MaterialTheme.colorScheme.secondary,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier
-                                        .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(4.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                                if (result.durationText.isNotEmpty()) {
-                                    Text(
-                                        text = result.durationText,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 12.sp
-                                    )
-                                }
-                            }
-                            
+                        Column {
                             Text(
-                                text = result.title,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 16.sp,
+                                text = "已解析 ${parseResults.size} 个作品",
                                 fontWeight = FontWeight.Bold,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            
-                            if (result.coverUrl.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(6.dp))
-                                val coverRequest = ImageRequest.Builder(context)
-                                    .data(result.coverUrl)
-                                    .setHeader("Referer", when {
-                                        result.platform.contains("bilibili", ignoreCase = true) || result.url.contains("bilibili", ignoreCase = true) -> "https://www.bilibili.com"
-                                        result.platform.contains("douyin", ignoreCase = true) || result.url.contains("douyin", ignoreCase = true) -> "https://www.douyin.com"
-                                        else -> ""
-                                    })
-                                    .crossfade(true)
-                                    .build()
-
-                                AsyncImage(
-                                    model = coverRequest,
-                                    contentDescription = "Video Cover Preview",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(180.dp)
-                                        .clip(RoundedCornerShape(8.dp)),
-                                    contentScale = ContentScale.Crop
-                                )
-                            }
-
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                            Text(
-                                text = "Select Formats to Download:",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Text(
+                                text = "已选 ${selectedItems.size} 个下载项",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
 
-                            // Render available formats
-                            result.items.forEach { item ->
-                                val isChecked = selectedItems.contains(item)
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(
-                                            if (isChecked) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                                            RoundedCornerShape(8.dp)
-                                        )
-                                        .padding(vertical = 4.dp, horizontal = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        val bgBadgeColor = if (item.kind == "video") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.tertiaryContainer
-                                        val onBadgeColor = if (item.kind == "video") MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onTertiaryContainer
-                                        
-                                        Text(
-                                            text = item.kind.uppercase(),
-                                            color = onBadgeColor,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier
-                                                .background(bgBadgeColor, RoundedCornerShape(4.dp))
-                                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = item.name,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            fontSize = 14.sp
-                                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilledTonalButton(
+                                onClick = {
+                                    val allItems = parseResults.flatMap { it.items }
+                                    if (selectedItems.size == allItems.size) {
+                                        selectedItems.clear()
+                                    } else {
+                                        selectedItems.clear()
+                                        selectedItems.addAll(allItems)
                                     }
-                                    Checkbox(
-                                        checked = isChecked,
-                                        onCheckedChange = { checked ->
-                                            if (checked) {
-                                                selectedItems.add(item)
-                                            } else {
-                                                selectedItems.remove(item)
-                                            }
-                                        }
-                                    )
-                                }
+                                },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                val allItems = parseResults.flatMap { it.items }
+                                Text(if (selectedItems.size == allItems.size) "全不选" else "全选", fontSize = 12.sp)
                             }
-
-                            Spacer(modifier = Modifier.height(4.dp))
 
                             Button(
                                 onClick = {
                                     if (selectedItems.isEmpty()) {
-                                        Toast.makeText(context, "Select at least one format", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "请先勾选需要下载的项", Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
-
-                                    // Trigger Foreground Service
-                                    val intent = Intent(context, DownloadService::class.java).apply {
-                                        putExtra("url", result.url)
-                                        putExtra("title", result.title)
-                                        putExtra("platform", result.platform)
-                                        putStringArrayListExtra("format_ids", ArrayList(selectedItems.map { it.formatId }))
-                                        putStringArrayListExtra("names", ArrayList(selectedItems.map { it.name }))
-                                        putStringArrayListExtra("kinds", ArrayList(selectedItems.map { it.kind }))
+                                    // 针对每个解析卡片分别启动后台下载服务
+                                    var startedCount = 0
+                                    parseResults.forEach { card ->
+                                        val cardSelected = selectedItems.filter { it.parentUrl == card.url || card.items.contains(it) }
+                                        if (cardSelected.isNotEmpty()) {
+                                            triggerDownload(card.url, card.title, card.platform, cardSelected)
+                                            startedCount++
+                                        }
                                     }
-                                    
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                        context.startForegroundService(intent)
-                                    } else {
-                                        context.startService(intent)
-                                    }
-
-                                    Toast.makeText(context, "Download started in background", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "已启动 $startedCount 个任务的后台下载", Toast.LENGTH_SHORT).show()
                                 },
-                                modifier = Modifier.fillMaxWidth(),
-                                enabled = selectedItems.isNotEmpty()
+                                enabled = selectedItems.isNotEmpty(),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                             ) {
-                                Text("Download Selected (${selectedItems.size})", fontWeight = FontWeight.Bold)
+                                Text("一键下载全部", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Render each Parsed Result Card
+        items(
+            items = parseResults,
+            key = { it.id }
+        ) { result ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = result.platform.uppercase(),
+                            color = MaterialTheme.colorScheme.secondary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                        if (result.durationText.isNotEmpty()) {
+                            Text(
+                                text = result.durationText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                    
+                    Text(
+                        text = result.title,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    
+                    if (result.coverUrl.isNotEmpty()) {
+                        val coverRequest = ImageRequest.Builder(context)
+                            .data(result.coverUrl)
+                            .setHeader("Referer", when {
+                                result.platform.contains("bilibili", ignoreCase = true) || result.url.contains("bilibili", ignoreCase = true) -> "https://www.bilibili.com"
+                                result.platform.contains("douyin", ignoreCase = true) || result.url.contains("douyin", ignoreCase = true) -> "https://www.douyin.com"
+                                else -> ""
+                            })
+                            .crossfade(true)
+                            .build()
+
+                        AsyncImage(
+                            model = coverRequest,
+                            contentDescription = "Cover Preview",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp)
+                                .clip(RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                    Text(
+                        text = "选择要下载的档位/图片:",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    // Render available formats in this card
+                    result.items.forEach { item ->
+                        val isChecked = selectedItems.contains(item)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (isChecked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color.Transparent,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(vertical = 4.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                val bgBadgeColor = when (item.kind) {
+                                    "video" -> MaterialTheme.colorScheme.primaryContainer
+                                    "image" -> MaterialTheme.colorScheme.secondaryContainer
+                                    else -> MaterialTheme.colorScheme.tertiaryContainer
+                                }
+                                val onBadgeColor = when (item.kind) {
+                                    "video" -> MaterialTheme.colorScheme.onPrimaryContainer
+                                    "image" -> MaterialTheme.colorScheme.onSecondaryContainer
+                                    else -> MaterialTheme.colorScheme.onTertiaryContainer
+                                }
+                                
+                                Text(
+                                    text = item.kind.uppercase(),
+                                    color = onBadgeColor,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .background(bgBadgeColor, RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = item.name,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Checkbox(
+                                checked = isChecked,
+                                onCheckedChange = { checked ->
+                                    if (checked) {
+                                        selectedItems.add(item)
+                                    } else {
+                                        selectedItems.remove(item)
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    val cardSelectedItems = selectedItems.filter { it.parentUrl == result.url || result.items.contains(it) }
+                    Button(
+                        onClick = {
+                            if (cardSelectedItems.isEmpty()) {
+                                Toast.makeText(context, "请先勾选该作品的下载档位", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            triggerDownload(result.url, result.title, result.platform, cardSelectedItems)
+                            Toast.makeText(context, "已开始下载: ${result.title}", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = cardSelectedItems.isNotEmpty()
+                    ) {
+                        Text("下载当前作品 (${cardSelectedItems.size})", fontWeight = FontWeight.Bold)
                     }
                 }
             }

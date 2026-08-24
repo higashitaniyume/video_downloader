@@ -53,22 +53,35 @@ jobs:
             ./gradlew assembleDebug
           fi
 
+      - name: 解析版本与项目名称
+        run: |
+          PROJECT_NAME=$(python3 -c "import re; m = re.search(r'name\s*=\s*\"([^\"]+)\"', open('pyproject.toml', encoding='utf-8').read()); print(m.group(1) if m else 'video-downloader')")
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            PY_VER=$(python3 -c "import re; m = re.search(r'version\s*=\s*\"([^\"]+)\"', open('pyproject.toml', encoding='utf-8').read()); print(m.group(1) if m else '1.0.0')")
+            VERSION="v${PY_VER}"
+          fi
+          echo "PROJECT_NAME=${PROJECT_NAME}" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "APK_NAME=${PROJECT_NAME}-${VERSION}.apk" >> $GITHUB_ENV
+
       - name: 准备发布产物
         run: |
           mkdir -p stage
           if [ -f "android/app/build/outputs/apk/release/app-release.apk" ]; then
-            cp android/app/build/outputs/apk/release/app-release.apk stage/video-downloader.apk
+            cp android/app/build/outputs/apk/release/app-release.apk "stage/${APK_NAME}"
           elif ls android/app/build/outputs/apk/release/*.apk 1>/dev/null 2>&1; then
-            cp android/app/build/outputs/apk/release/*.apk stage/video-downloader.apk
+            cp android/app/build/outputs/apk/release/*.apk "stage/${APK_NAME}"
           else
-            cp android/app/build/outputs/apk/debug/app-debug.apk stage/video-downloader.apk
+            cp android/app/build/outputs/apk/debug/app-debug.apk "stage/${APK_NAME}"
           fi
 
       - name: 上传构建产物 (Artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: video-downloader-apk
-          path: stage/video-downloader.apk
+          name: ${{ env.PROJECT_NAME }}-${{ env.VERSION }}-apk
+          path: stage/${{ env.APK_NAME }}
           retention-days: 7
 
       - name: 发布到 GitHub Release (仅打 v* 标签时)
@@ -77,7 +90,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" stage/video-downloader.apk --clobber
+            gh release upload "$GITHUB_REF_NAME" "stage/${APK_NAME}" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" stage/video-downloader.apk --generate-notes --title "video-downloader $GITHUB_REF_NAME"
+            gh release create "$GITHUB_REF_NAME" "stage/${APK_NAME}" --generate-notes --title "${PROJECT_NAME} $GITHUB_REF_NAME"
           fi

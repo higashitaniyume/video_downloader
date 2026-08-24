@@ -86,6 +86,7 @@ class AppConfig:
     quality: str = DEFAULT_QUALITY
     ydl_cookies_from_browser: str = ""
     ydl_cookies_file: str = ""
+    web_port: int = 5200
 
     @property
     def proxy_enabled(self) -> bool:
@@ -105,6 +106,7 @@ class AppConfig:
             ydl_cookies_from_browser=str(
                 data.get("ydl_cookies_from_browser", "") or "").strip().lower(),
             ydl_cookies_file=str(data.get("ydl_cookies_file", "") or "").strip(),
+            web_port=int(data.get("web_port", 5200) or 5200),
         )
 
     def save(self) -> None:

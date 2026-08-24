@@ -12,6 +12,7 @@ from typing import Optional
 
 import customtkinter as ctk
 from tkinter import filedialog
+import webbrowser
 
 from app.common import DownloadSummary
 from app.config import AppConfig
@@ -20,6 +21,7 @@ from app.settings_dialog import SettingsDialog
 from app.theme import font
 from app.downloader import MediaDownloader
 from app.engine import DEFAULT_UA, MediaItem, ParseEngine, ParseResult
+from app.web.server import WebServerManager
 
 logger = logging.getLogger(__name__)
 
@@ -245,8 +247,21 @@ class MediaToolApp(ctk.CTk):
         self._ui_queue: queue.Queue = queue.Queue()
         self.after(50, self._drain_ui_queue)
 
+        # 启动后台 Web 服务
+        self._web_manager: Optional[WebServerManager] = None
+        try:
+            self._web_manager = WebServerManager(host="127.0.0.1", port=self.config.web_port, out_dir=self._out_dir)
+            self._web_manager.start_in_thread()
+            logger.info("GUI 后台 Web 服务已启动: %s", self._web_manager.server_url)
+        except Exception as exc:
+            logger.warning("GUI 后台 Web 服务启动失败: %s", exc)
+
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
         self._build_layout()
-        if self.config.proxy_url:
+        if self._web_manager and self._web_manager.is_running:
+            self.status_label.configure(text=f"ℹ️ 系统就绪 | 🌐 Web 界面已就绪：{self._web_manager.server_url}")
+        elif self.config.proxy_url:
             self.status_label.configure(text=f"ℹ️ 代理已启用：{self.config.proxy_url}")
 
     # ── 布局 ─────────────────────────────────
@@ -312,12 +327,13 @@ class MediaToolApp(ctk.CTk):
         )
         self.parse_button.grid(row=2, column=0, sticky="ew", padx=14, pady=(0, 8))
 
-        # Secondary Actions Row (Clear, Log, Settings) - sharing 3 columns
+        # Secondary Actions Row (Clear, Web, Log, Settings) - sharing 4 columns
         btn_sec = ctk.CTkFrame(input_sec, fg_color="transparent")
         btn_sec.grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 12))
         btn_sec.grid_columnconfigure(0, weight=1)
         btn_sec.grid_columnconfigure(1, weight=1)
         btn_sec.grid_columnconfigure(2, weight=1)
+        btn_sec.grid_columnconfigure(3, weight=1)
 
         self.clear_button = ctk.CTkButton(
             btn_sec, text="🧹 清空", height=30, font=font(11),
@@ -325,7 +341,15 @@ class MediaToolApp(ctk.CTk):
             text_color=("#1E293B", "#F1F5F9"), hover_color=("#E2E8F0", "#334155"),
             command=self._on_clear
         )
-        self.clear_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        self.clear_button.grid(row=0, column=0, sticky="ew", padx=(0, 2))
+
+        self.web_button = ctk.CTkButton(
+            btn_sec, text="🌐 网页端", height=30, font=font(11, "bold"),
+            fg_color=("#EEF2F6", "#1E1B4B"), border_width=1, border_color=("#C7D2FE", "#4338CA"),
+            text_color=("#4F46E5", "#A5B4FC"), hover_color=("#E0E7FF", "#312E81"),
+            command=self._open_web_ui
+        )
+        self.web_button.grid(row=0, column=1, sticky="ew", padx=2)
 
         self.log_button = ctk.CTkButton(
             btn_sec, text="📝 日志", height=30, font=font(11),
@@ -333,7 +357,7 @@ class MediaToolApp(ctk.CTk):
             text_color=("#1E293B", "#F1F5F9"), hover_color=("#E2E8F0", "#334155"),
             command=self._open_logs_folder
         )
-        self.log_button.grid(row=0, column=1, sticky="ew", padx=2)
+        self.log_button.grid(row=0, column=2, sticky="ew", padx=2)
 
         self.settings_button = ctk.CTkButton(
             btn_sec, text="⚙️ 设置", height=30, font=font(11),
@@ -341,7 +365,7 @@ class MediaToolApp(ctk.CTk):
             text_color=("#1E293B", "#F1F5F9"), hover_color=("#E2E8F0", "#334155"),
             command=self._open_settings
         )
-        self.settings_button.grid(row=0, column=2, sticky="ew", padx=(4, 0))
+        self.settings_button.grid(row=0, column=3, sticky="ew", padx=(2, 0))
 
         # --- Section 2: Output Path ---
         out_sec = ctk.CTkFrame(
@@ -528,6 +552,27 @@ class MediaToolApp(ctk.CTk):
     def _open_settings(self) -> None:
         SettingsDialog(self, self.config, lambda: self.engine,
                        on_save=self._apply_settings, ui_post=self._ui)
+
+    def _open_web_ui(self) -> None:
+        """在默认浏览器中打开 Web 界面。"""
+        if self._web_manager and self._web_manager.is_running:
+            url = self._web_manager.server_url
+            try:
+                webbrowser.open(url)
+                self.status_label.configure(text=f"🌐 已在浏览器中打开 Web 界面：{url}")
+            except Exception as exc:
+                self.status_label.configure(text=f"❌ 打开浏览器失败：{exc}")
+        else:
+            self.status_label.configure(text="⚠️ Web 服务未运行")
+
+    def _on_close(self) -> None:
+        """窗口关闭处理：停止后台 Web 服务。"""
+        if hasattr(self, "_web_manager") and self._web_manager:
+            try:
+                self._web_manager.stop()
+            except Exception:
+                pass
+        self.destroy()
 
     def _open_logs_folder(self) -> None:
         """打开日志文件夹（程序目录下的 logs）。"""

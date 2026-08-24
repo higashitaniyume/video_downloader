@@ -80,77 +80,137 @@ fun openFolder(context: Context, filePath: String) {
 fun saveFileToMediaStore(context: Context, tempFile: File, kind: String): String? {
     val resolver = context.contentResolver
     val fileName = tempFile.name
-    val mimeType = when (tempFile.extension.lowercase()) {
+    val ext = tempFile.extension.lowercase()
+
+    val actualKind = when (ext) {
+        "jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif" -> "image"
+        "mp3", "m4a", "wav", "aac", "flac", "ogg", "opus" -> "audio"
+        "mp4", "mkv", "webm", "avi", "mov", "flv", "3gp", "ts" -> "video"
+        else -> kind.lowercase()
+    }
+
+    val mimeType = when (ext) {
         "mp4" -> "video/mp4"
         "mkv" -> "video/x-matroska"
-        "webm" -> "video/webm"
+        "webm" -> if (actualKind == "audio") "audio/webm" else "video/webm"
+        "avi" -> "video/x-msvideo"
+        "mov" -> "video/quicktime"
+        "flv" -> "video/x-flv"
         "mp3" -> "audio/mpeg"
         "m4a" -> "audio/mp4"
         "wav" -> "audio/wav"
+        "aac" -> "audio/aac"
+        "flac" -> "audio/flac"
+        "ogg", "opus" -> "audio/ogg"
         "jpg", "jpeg" -> "image/jpeg"
         "png" -> "image/png"
-        else -> "*/*"
+        "webp" -> "image/webp"
+        "gif" -> "image/gif"
+        "bmp" -> "image/bmp"
+        "heic" -> "image/heic"
+        "heif" -> "image/heif"
+        else -> when (actualKind) {
+            "image" -> "image/jpeg"
+            "audio" -> "audio/mpeg"
+            "video" -> "video/mp4"
+            else -> "application/octet-stream"
+        }
     }
 
-    val contentValues = ContentValues().apply {
-        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-        put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val relativePath = when (kind.lowercase()) {
-                "video" -> "Movies/VideoDownloader"
-                "audio" -> "Music/VideoDownloader"
-                "image" -> "Pictures/VideoDownloader"
-                else -> "Download/VideoDownloader"
-            }
+    val targetFolder = when (actualKind) {
+        "video" -> "Movies"
+        "audio" -> "Music"
+        "image" -> "Pictures"
+        else -> "Download"
+    }
+    val subFolder = "VideoDownloader"
+    val relativePath = "$targetFolder/$subFolder"
+
+    var resultPath: String? = null
+
+    // 1. Android Q (10) 及以上：使用 MediaStore 插入
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
             put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
-    }
 
-    val collectionUri = when (kind.lowercase()) {
-        "video" -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        "audio" -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-        "image" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        else -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Downloads.EXTERNAL_CONTENT_URI
-        } else {
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        }
-    }
-
-    try {
-        val itemUri = resolver.insert(collectionUri, contentValues) ?: return null
-        resolver.openOutputStream(itemUri)?.use { outStream ->
-            tempFile.inputStream().use { inStream ->
-                inStream.copyTo(outStream)
-            }
+        val collectionUri = when (actualKind) {
+            "video" -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            "audio" -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            "image" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            else -> MediaStore.Downloads.EXTERNAL_CONTENT_URI
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            contentValues.clear()
-            contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            resolver.update(itemUri, contentValues, null, null)
-        }
-
-        // Retrieve physical file path
-        var physicalPath: String? = null
-        val projection = arrayOf(MediaStore.MediaColumns.DATA)
-        resolver.query(itemUri, projection, null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val dataIndex = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
-                physicalPath = cursor.getString(dataIndex)
-            }
-        }
-        
-        // Clean up temporary file
         try {
-            tempFile.delete()
-        } catch (e: Exception) {}
+            val itemUri = resolver.insert(collectionUri, contentValues)
+            if (itemUri != null) {
+                resolver.openOutputStream(itemUri)?.use { outStream ->
+                    tempFile.inputStream().use { inStream ->
+                        inStream.copyTo(outStream)
+                    }
+                }
 
-        return physicalPath
-    } catch (e: Exception) {
-        e.printStackTrace()
-        return null
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(itemUri, contentValues, null, null)
+
+                val projection = arrayOf(MediaStore.MediaColumns.DATA)
+                resolver.query(itemUri, projection, null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val dataIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+                        if (dataIndex >= 0) {
+                            resultPath = cursor.getString(dataIndex)
+                        }
+                    }
+                }
+                if (resultPath.isNullOrBlank()) {
+                    resultPath = File(
+                        android.os.Environment.getExternalStoragePublicDirectory(targetFolder),
+                        "$subFolder/$fileName"
+                    ).absolutePath
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
+
+    // 2. 兜底处理（或 Android 9 及以下）：直接保存到外部公共存储目录
+    if (resultPath.isNullOrBlank()) {
+        try {
+            val publicDir = File(
+                android.os.Environment.getExternalStoragePublicDirectory(targetFolder),
+                subFolder
+            ).apply { mkdirs() }
+            val destFile = File(publicDir, fileName)
+            tempFile.copyTo(destFile, overwrite = true)
+            resultPath = destFile.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // 3. 触发系统媒体库扫描（MediaScanner），确保相册和播放器立刻显示
+    if (!resultPath.isNullOrBlank()) {
+        try {
+            android.media.MediaScannerConnection.scanFile(
+                context,
+                arrayOf(resultPath),
+                arrayOf(mimeType),
+                null
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // 4. 清理临时缓存文件
+    try {
+        tempFile.delete()
+    } catch (e: Exception) {}
+
+    return resultPath
 }
