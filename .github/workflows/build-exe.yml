@@ -98,6 +98,7 @@ jobs:
         run: |
           if (gh release view "$env:GITHUB_REF_NAME" 2>$null) {
             gh release upload "$env:GITHUB_REF_NAME" "$env:ZIP_NAME" "stage/$env:EXE_NAME" --clobber
+            gh release edit "$env:GITHUB_REF_NAME" --draft=false
           } else {
-            gh release create "$env:GITHUB_REF_NAME" "$env:ZIP_NAME" "stage/$env:EXE_NAME" --generate-notes --title "$env:PROJECT_NAME $env:GITHUB_REF_NAME"
+            gh release create "$env:GITHUB_REF_NAME" "$env:ZIP_NAME" "stage/$env:EXE_NAME" --draft=false --generate-notes --title "$env:PROJECT_NAME $env:GITHUB_REF_NAME"
           }
