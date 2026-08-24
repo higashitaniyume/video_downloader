@@ -1,15 +1,9 @@
 name: build-apk
 
-# 提示：若需构建正式签名的 Release APK，请在 GitHub Repository Secrets 中配置以下密钥：
-#   - SIGNING_KEY: 证书文件 (.jks 或 .keystore) 的 Base64 编码字符串
-#   - ALIAS: 证书别名
-#   - KEY_STORE_PASSWORD: 证书库密码
-#   - KEY_PASSWORD: 密钥密码
-
 on:
   push:
     branches:
-      - main
+      - master
     tags:
       - 'v*'
   workflow_dispatch:
@@ -37,42 +31,42 @@ jobs:
       - name: 给 gradlew 赋予执行权限
         run: chmod +x android/gradlew
 
+      - name: 配置签名密钥
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: |
+          if [ -n "$SIGNING_KEY" ]; then
+            echo "$SIGNING_KEY" | base64 -d > android/key.jks
+            cat > android/local.properties <<EOF
+          RELEASE_STORE_FILE=key.jks
+          RELEASE_STORE_PASSWORD=${{ secrets.KEY_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS=${{ secrets.ALIAS }}
+          RELEASE_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}
+          EOF
+            echo "Signing key configured."
+          else
+            echo "No signing key found. Will build debug APK."
+          fi
+
       - name: 编译 APK
         run: |
           cd android
-          if [ "${{ secrets.SIGNING_KEY }}" != "" ]; then
-            echo "Signing key detected. Building Release APK..."
+          if [ -f "key.jks" ]; then
+            echo "Building signed Release APK..."
             ./gradlew assembleRelease
           else
-            echo "No signing key. Building Debug APK..."
+            echo "Building Debug APK..."
             ./gradlew assembleDebug
           fi
-
-      - name: 签名 Release APK
-        if: secrets.SIGNING_KEY != ''
-        uses: r0adkll/sign-android-release@v1
-        id: sign_app
-        with:
-          releaseDirectory: android/app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-          alias: ${{ secrets.ALIAS }}
-          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
 
       - name: 准备发布产物
         run: |
           mkdir -p stage
-          if [ -d "android/app/build/outputs/apk/release" ]; then
-            SIGNED_APK=$(find android/app/build/outputs/apk/release -name "*-signed.apk" | head -n 1)
-            if [ -n "$SIGNED_APK" ]; then
-              echo "Found signed Release APK: $SIGNED_APK"
-              cp "$SIGNED_APK" stage/video-downloader.apk
-            else
-              echo "No signed APK found. Copying unsigned Release APK..."
-              cp android/app/build/outputs/apk/release/app-release-unsigned.apk stage/video-downloader.apk
-            fi
+          if [ -f "android/app/build/outputs/apk/release/app-release.apk" ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk stage/video-downloader.apk
+          elif ls android/app/build/outputs/apk/release/*.apk 1>/dev/null 2>&1; then
+            cp android/app/build/outputs/apk/release/*.apk stage/video-downloader.apk
           else
-            echo "Copying Debug APK..."
             cp android/app/build/outputs/apk/debug/app-debug.apk stage/video-downloader.apk
           fi
 
