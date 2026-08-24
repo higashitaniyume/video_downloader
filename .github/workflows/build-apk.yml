@@ -2,8 +2,6 @@ name: build-apk
 
 on:
   push:
-    branches:
-      - master
     tags:
       - 'v*'
   workflow_dispatch:
@@ -34,15 +32,18 @@ jobs:
       - name: 配置签名密钥
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -n "$SIGNING_KEY" ]; then
-            echo "$SIGNING_KEY" | base64 -d > android/key.jks
-            cat > android/local.properties <<EOF
-          RELEASE_STORE_FILE=key.jks
-          RELEASE_STORE_PASSWORD=${{ secrets.KEY_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS=${{ secrets.ALIAS }}
-          RELEASE_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}
-          EOF
+            echo "$SIGNING_KEY" | base64 -d > android/app/key.jks
+            cat > android/local.properties << 'EOF'
+RELEASE_STORE_FILE=key.jks
+EOF
+            printf "RELEASE_STORE_PASSWORD=%s\n" "$KEY_STORE_PASSWORD" >> android/local.properties
+            printf "RELEASE_KEY_ALIAS=%s\n" "$KEY_ALIAS" >> android/local.properties
+            printf "RELEASE_KEY_PASSWORD=%s\n" "$KEY_PASSWORD" >> android/local.properties
             echo "Signing key configured."
           else
             echo "No signing key found. Will build debug APK."
@@ -51,7 +52,7 @@ jobs:
       - name: 编译 APK
         run: |
           cd android
-          if [ -f "key.jks" ]; then
+          if [ -f "app/key.jks" ]; then
             echo "Building signed Release APK..."
             ./gradlew assembleRelease
           else
