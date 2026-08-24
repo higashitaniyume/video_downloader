@@ -1,48 +1,21 @@
 # video_downloader
 
-视频/媒体解析与下载小工具（Windows 桌面 GUI + CLI 双入口）。
+这是一个为强大命令行媒体下载工具 `yt-dlp` 开发的现代图形界面包装器（Windows 桌面 GUI + CLI 双入口）。
 
-粘贴一个链接就能解析出标题、作者、时长、封面和可用的媒体直链，勾选后即可下载到本地。
-支持国内主流平台（B站、抖音、快手、微博、小红书、头条、闲鱼、小黑盒、TikTok、Twitter/X），
-也支持 YouTube、SoundCloud、Instagram、Vimeo、网易云音乐等海外站点 —— 以及更多，
-解析能力覆盖 1900+ 平台，大部分无需登录即可使用。
-<img width="1920" height="1152" alt="image" src="https://github.com/user-attachments/assets/5547db3c-bde3-446a-81f9-a986293eb8b6" />
-
-
+粘贴一个链接即可自动通过 `yt-dlp` 解析出标题、作者、时长、封面和全部可用的媒体格式档位，勾选后即可一键下载到本地。支持国内外 1900+ 平台的解析与下载。
 
 ## 功能特性
 
-- **GUI 桌面工具**（深色主题）：粘贴多行链接 → 解析卡片（平台徽章/标题/作者/时长/封面）→ 勾选媒体 → 实时下载进度
-- **CLI**：解析、JSON 输出、批量下载，可脚本化
-- **下载能力强**：直链流式下载（逐字节进度）、B站 DASH 分离流、HLS(m3u8) 流、自动格式选择 + ffmpeg 音视频合并
-- **可选 B 站 Cookie**：解锁高清晰度（`--bilibili-cookie`）
-- **清晰度可配置**：B 站解析与 yt-dlp 兜底平台（YouTube 等）可统一限制最高清晰度
-  （自动 / 4K / 1080P / 720P / 480P / 360P，GUI 设置或 CLI `--quality`）
-- **GUI 设置**：可在界面里配置全局代理（解析/下载全程生效，含测试按钮）、B 站 Cookie 与最高清晰度，
-  配置自动保存到程序当前目录（`config.json`），内置「如何获取 Cookie」图文指引
-- **Instagram 等平台登录（yt-dlp Cookie）**：可在设置里读取浏览器已登录 Cookie
-  （Edge / Chrome / Firefox）或指定 cookies.txt，让 Instagram 等需要登录的平台也能解析下载
-- **B 站扫码登录**：设置里扫码即登录，凭据自动保存（当前目录 `bilibili_credentials.json`），
-  无需手动复制 Cookie，下次启动免登录；配置/凭据/下载缓存都在当前目录，整个工具可随文件夹搬移
-  
-  <img width="582" height="792" alt="image" src="https://github.com/user-attachments/assets/7ed9bf9f-6c94-4d42-ba04-2633b5becf00" />
-
+- **GUI 桌面工具**（深色主题）：粘贴多行链接 → 解析卡片（平台/标题/作者/时长/封面）→ 勾选媒体格式（如不同分辨率视频/单独音频）→ 实时下载进度。
+- **CLI 命令行工具**：解析链接、输出 JSON 格式元数据、批量下载，方便脚本化集成。
+- **下载能力强**：支持通过 `yt-dlp` 进行视频流下载，对于音视频分离的平台，自动调用本地 `ffmpeg` 进行合并。
+- **平台登录 Cookie 读取**：可在设置中配置直接读取浏览器已登录的 Cookie（Edge / Chrome / Firefox）或指定本地 `cookies.txt` 文件，让 B站高清、YouTube 限制内容、Instagram 等需要登录的平台也能解析和下载。
+- **清晰度上限控制**：支持全局设置最高清晰度（自动 / 4K / 1080P / 720P / 480P / 360P），自动隐藏/过滤高于该清晰度的格式。
+- **全局代理**：设置中可一键启用并测试本地代理，确保海外平台（YouTube 等）解析和下载的连通性。
 
 ## 支持的平台
 
-| 平台 | 说明 |
-| --- | --- |
-| Bilibili | BV/AV 号、番剧 ep/ss、动态/opus、b23.tv 短链；无 Cookie 时低清晰度，配置 Cookie 可解锁高清晰度 |
-| 抖音 Douyin | 分享短链、视频/图文/Slides |
-| 快手 Kuaishou | 短链/长链/gifshow |
-| 微博 Weibo | 桌面版/移动版/视频组件页，自动获取访客 Cookie |
-| 小红书 Xiaohongshu | 短链/移动端/PC 端笔记 |
-| TikTok | 需科学上网（可用代理） |
-| 头条 Toutiao | |
-| 闲鱼 Xianyu | 商品媒体 |
-| 小黑盒 Xiaoheihe | 含 HLS(m3u8) 流 |
-| Twitter / X | 多数内容需登录 |
-| YouTube / SoundCloud / Instagram / Vimeo / 网易云音乐 等 | 及更多 1900+ 站点，解析后展示精选画质档位（如 `1080p` / `audio 129k`），下载时自动合并音视频 |
+支持包括 YouTube、Bilibili (B站)、抖音、快手、微博、小红书、TikTok、Twitter/X、Vimeo 等在内的 1900+ 平台，极具通用性。
 
 ## 安装
 
@@ -52,82 +25,36 @@
 pip install -e .
 
 # 或手动装依赖
-pip install aiohttp cryptography customtkinter pillow "yt-dlp[default]"
+pip install customtkinter pillow "yt-dlp[default]"
 ```
 
 音视频合并需要系统安装 ffmpeg（`ffmpeg` 在 PATH 中即可）。
 
 ## 用法
 
-### GUI（推荐）
+### GUI
 
 ```bash
 python main.py
 ```
 
-粘贴链接（可多行）→ 解析 → 勾选媒体 → 下载。输出目录可改，支持封面/平台徽章、逐字节下载进度。
+粘贴链接（可多行） → 点击「解析链接」 → 勾选卡片上的格式 → 点击「下载全部」。
 
-侧栏「设置」按钮可配置：
-
-- **代理**：填写代理软件（Clash / v2ray 等）的本地地址，如 `http://127.0.0.1:7890`，
-  解析与下载全程生效，点「测试代理」可验证连通性；
-- **B 站 Cookie**：解锁高清晰度，点「如何获取 Cookie？」有详细的获取步骤说明
-  （F12 → 网络 Network → 刷新 → 复制请求头里的 Cookie 整行）。
-- **B 站扫码登录**：点「扫码登录」弹出二维码，用 B 站手机 App 扫一扫即完成登录，
-  凭据自动保存、免手动复制 Cookie；登录态优先于手动配置的 Cookie。
-- **最高清晰度**：选择 B 站解析所选画质的上限（如 1080P）；对 YouTube 等 yt-dlp 兜底平台，
-  解析结果只展示不高于该清晰度的档位。选「自动（最高可用）」则不限制。
-- **Instagram 等平台登录（yt-dlp Cookie）**：Instagram 等平台需要登录态才能解析。
-  可在「读取浏览器 Cookie」里选 Edge / Chrome / Firefox（需先在该浏览器登录过 Instagram），
-  或选择一份 cookies.txt（Netscape 格式，可用浏览器扩展如 Get cookies.txt 导出）；
-  解析与下载全程生效。
+在左下角点击「设置」，可以配置：
+1. **代理配置**：支持填写本地代理（如 `http://127.0.0.1:7890`），点「测试代理」可测试网络连通性。
+2. **最高清晰度上限**：限制获取的格式档位。
+3. **平台登录 Cookie**：选择已登录相应平台的浏览器（Edge/Chrome/Firefox），使 yt-dlp 能读取登录态。
 
 ### CLI
 
 ```bash
-python cli.py "https://www.bilibili.com/video/BV1GJ411x7h7"
-python cli.py --download --out ./downloads "https://v.douyin.com/xxxx/ 附带任意文本"
+python cli.py "https://www.bilibili.com/video/BVxxxxxx"
+python cli.py --download --out ./downloads "https://www.youtube.com/watch?v=xxxxxx"
 python cli.py --json "https://weibo.com/xxx"
-python cli.py --bilibili-cookie "SESSDATA=...; bili_jct=..." --download "https://b23.tv/xxx"
 python cli.py --quality 1080p --download "https://www.youtube.com/watch?v=xxx"
-# --quality 可选 auto/4k/1080p/720p/480p/360p（默认 auto=最高可用），B站与 yt-dlp 平台均生效
 python cli.py --proxy http://127.0.0.1:7890 --download "https://www.youtube.com/watch?v=xxx"
-# --proxy 全局代理（解析+下载）；旧参数 --ydl-proxy 仍可用，仅作用于 yt-dlp
 python cli.py --ydl-cookies-from-browser edge "https://www.instagram.com/p/xxx"
-python cli.py --ydl-cookies-file cookies.txt --download "https://www.instagram.com/p/xxx"
-# --ydl-cookies-* 读取浏览器已登录 Cookie / 指定 cookies.txt，用于 Instagram 等需要登录的平台
 ```
-
-## 常见问题
-
-**Q: 某个链接解析失败/无法下载？**
-部分平台需要登录态（微博长视频、Twitter、Vimeo、Instagram），部分平台会风控数据中心/海外 IP。
-解析失败时界面/日志会显示具体原因；若提示需要登录 Cookie，可在设置里为 yt-dlp 配置
-浏览器 Cookie（`--ydl-cookies-from-browser edge`）或 cookies.txt（`--ydl-cookies-file cookies.txt`）。
-
-**Q: YouTube 解析成功但下载 403？**
-YouTube 对数据中心 IP 的下载请求直接拒绝，属平台风控。配置代理：
-`python cli.py --ydl-proxy http://127.0.0.1:7890 --download "链接"`
-
-**Q: B 站扫码登录了，解析出来还是 720P / 480P？**
-请先重启程序再重新解析（登录态在启动时加载；同一会话内扫码后也需重新解析）。
-另外注意：普通账号最高通常只能拿到 1080P；1080P60 / 1080P+ / 4K 等档位需要大会员；
-部分视频上传时本身最高就只有 720P。可在设置里把「最高清晰度」设为「自动（最高可用）」。
-
-**Q: 音视频分离没声音 / 提示需要 ffmpeg？**
-合并音视频依赖系统 ffmpeg（`choco install ffmpeg` 或官网安装后加入 PATH）。
-
-## 自动构建 Windows EXE（GitHub Actions）
-
-仓库内置 `.github/workflows/build-exe.yml`，自动用 PyInstaller 打包
-`video-downloader-GUI.exe`（onefile，**内置 ffmpeg/ffprobe，用户无需安装 ffmpeg**）：
-
-- **触发方式**：推送到 `main` 分支、或在 Actions 页面手动运行（workflow_dispatch）；
-  推送 `v*` 标签时额外自动创建 GitHub Release 并附上构建产物。
-- **下载产物**：Actions 页 → 对应运行记录 → Artifacts 下载 zip（内含 exe + ffmpeg）。
-- **发布版本**：`git tag v0.1.0 && git push origin v0.1.0`。
-- **提示**：未签名程序首次运行会被 Windows SmartScreen 拦截，
-  点「更多信息 → 仍要运行」；杀软也可能误报 PyInstaller onefile，属常见现象。
 
 ## 项目结构
 
@@ -135,29 +62,19 @@ YouTube 对数据中心 IP 的下载请求直接拒绝，属平台风控。配�
 main.py           GUI 入口（customtkinter）
 cli.py            CLI 入口
 app/
-  common.py       共享模型（DownloadSummary、文件名净化）
-  engine.py       解析引擎：平台路由与并发解析 → ParseResult
-  ydl.py          通用站点引擎与下载器（格式档位精选、进度钩子、ffmpeg 合并）
-  downloader.py   直链下载器：流式下载（进度）+ DASH/HLS 处理
-  config.py       应用配置持久化（代理、Cookie、清晰度 → 当前目录 config.json）
-  logging_setup.py  日志系统（→ <程序目录>/logs/，滚动保留 + 未捕获异常落盘）
-  portable.py     便携运行支持（exe 打包后自动找到随包 ffmpeg）
-  theme.py        UI 字体工具（使用系统默认字体）
-  settings_dialog.py  设置窗口（代理 + Cookie + 扫码登录 + yt-dlp Cookie + 获取方法说明）
-  gui.py          图形界面
-parser_core/      解析核心（内置各平台解析器与下载管理）
+  common.py       共享模型与文件名净化工具
+  engine.py       解析引擎：提取链接，调用 YdlEngine 解析元数据
+  ydl.py          yt-dlp 引擎包装与下载器（格式精选、进度钩子、合并逻辑）
+  downloader.py   媒体下载器：将下载委托给 YdlDownloader 执行
+  config.py       应用配置持久化（代理、清晰度、Cookie 配置 -> config.json）
+  logging_setup.py  日志系统（-> logs/ 滚动日志）
+  portable.py     便携运行支持（EXE 打包支持）
+  theme.py        UI 字体工具
+  settings_dialog.py  设置窗口（代理 + 清晰度 + 浏览器 Cookie）
+  gui.py          图形界面主窗口
 ```
-
 ## 已知限制
 
-- 部分平台（微博长视频、Twitter、Vimeo、Instagram 等）需要登录态，解析或下载可能失败；
-  可在设置/CLI 中为 yt-dlp 配置浏览器 Cookie 或 cookies.txt 后重试
-- 数据中心/海外 IP 访问部分平台（YouTube 下载、SoundCloud、网易云音乐等）会被风控拒绝，
-  可用 `--ydl-proxy` 配置代理
-- B 站 DASH 分离流无逐字节进度；音视频合并依赖系统 ffmpeg
-- 抖音/快手等平台风控较严，频率过高可能触发验证
-
-## 鸣谢
-
-- 视频解析大部分逻辑基于[HIKARI_BOT_NEO](https://github.com/higashitaniyume/HIKARI_BOT_NEO)机器人的视频解析逻辑
-- yt-dlp基于[yt-dlp](https://github.com/yt-dlp/yt-dlp)
+- 部分平台（微博长视频、Twitter、Vimeo、Instagram 等）需要登录态，解析或下载可能失败；可在设置/CLI 中为 yt-dlp 配置浏览器 Cookie 或 cookies.txt 后重试。
+- 数据中心/海外 IP 访问部分平台（YouTube、SoundCloud、网易云音乐等）可能被风控拒绝，可配置代理。
+- 音视频合并依赖系统 ffmpeg。

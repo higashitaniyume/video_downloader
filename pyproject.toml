@@ -1,7 +1,7 @@
 [project]
 name = "video-downloader"
-version = "0.2.0"
-description = "视频/媒体链接解析与下载小工具：parser_core + yt-dlp 双引擎，GUI/CLI 双入口"
+version = "1.0.0"
+description = "视频/媒体链接解析与下载小工具：基于 yt-dlp 的 GUI/CLI 双入口包装器"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "AGPL-3.0-or-later"
@@ -19,7 +19,6 @@ classifiers = [
 dependencies = [
     "customtkinter>=5.2.0",
     "aiohttp>=3.10",
-    "cryptography>=42.0",
     "pillow>=10.0",
     "yt-dlp[default]>=2025.1",
 ]
@@ -35,7 +34,7 @@ build-backend = "setuptools.build_meta"
 py-modules = ["main", "cli"]
 
 [tool.setuptools.packages.find]
-include = ["app*", "parser_core*"]
+include = ["app*"]
 
 [tool.uv]
 default-index = "https://pypi.org/simple"

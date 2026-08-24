@@ -11,6 +11,7 @@ wheels/
 
 # Tool runtime
 downloads/
+test_downloads/
 cache/
 # 本地配置与登录凭据（含 Cookie，切勿提交）
 config.json

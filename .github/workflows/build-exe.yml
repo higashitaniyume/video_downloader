@@ -30,11 +30,12 @@ jobs:
 
       - name: 安装依赖与 PyInstaller
         # 直接安装依赖（不 pip install 项目本身），让 PyInstaller 从仓库根目录
-        # 收集本地的 app/ 与 parser_core/，避免 editable 安装的路径解析问题。
+        # 收集本地的 app/，避免 editable 安装的路径解析问题。
         # 依赖列表与 pyproject.toml 保持一致。
         run: |
           python -m pip install --upgrade pip
-          pip install customtkinter aiohttp cryptography pillow "yt-dlp[default]" pyinstaller
+          pip install customtkinter aiohttp pillow pyinstaller
+          pip install --pre "yt-dlp[default]"
 
       - name: 下载 ffmpeg（随 exe 分发，用户免安装）
         shell: pwsh

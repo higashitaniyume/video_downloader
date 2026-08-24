@@ -52,7 +52,7 @@ def _print_result(result, index: int = 0) -> None:
 async def _download_all(downloader: MediaDownloader, results, out_dir: Path) -> None:
     from app.downloader import DownloadSummary
 
-    async def _progress(label: str, done: int, total: int | None) -> None:
+    def _progress(label: str, done: int, total: int | None) -> None:
         if total:
             print(f"\r    {label}: {_format_bytes(done)} / {_format_bytes(total)}", end="", flush=True)
         else:
@@ -66,9 +66,9 @@ async def _download_all(downloader: MediaDownloader, results, out_dir: Path) -> 
             summary = await downloader.download_result(session, result, _progress)
         print()
         for f in summary.files:
-            print(f"    ✓ {f.path.name} ({_format_bytes(f.size_bytes)})")
+            print(f"    [OK] {f.path.name} ({_format_bytes(f.size_bytes)})")
         for err in summary.errors:
-            print(f"    ✗ {err}")
+            print(f"    [ERR] {err}")
         if not summary.files:
             print("    (未下载到任何文件)")
 
@@ -77,26 +77,24 @@ def main() -> None:
     setup_portable_env()
     setup_logging()
     parser = argparse.ArgumentParser(
-        description="视频/媒体链接解析与下载工具（复用 HIKARI_BOT_NEO 解析核心）",
+        description="视频/媒体链接解析与下载工具（基于 yt-dlp）",
     )
     parser.add_argument("text", nargs="*", help="链接或包含链接的文本；不提供则从 stdin 读取")
     parser.add_argument("--download", action="store_true", help="解析后下载媒体")
     parser.add_argument("--out", default="downloads", help="下载输出目录（默认 downloads/）")
     parser.add_argument("--json", action="store_true", help="以 JSON 输出解析结果")
-    parser.add_argument("--bilibili-cookie", default="", help="B站登录 Cookie（可选，解锁高清晰度）")
     parser.add_argument("--quality", default="auto",
                         choices=["auto", "4k", "1080p", "720p", "480p", "360p"],
-                        help="最高清晰度：B站解析与 yt-dlp 兜底平台（YouTube 等）生效（默认 auto=最高可用）")
+                        help="最高清晰度：限制 yt-dlp 视频解析的清晰度上限（默认 auto=最高可用）")
     parser.add_argument("--proxy", default="", help="全局代理地址（解析+下载），如 http://127.0.0.1:7890")
-    parser.add_argument("--ydl-proxy", default="", help="yt-dlp 兜底引擎的代理地址，如 http://127.0.0.1:7890")
+    parser.add_argument("--ydl-proxy", default="", help="yt-dlp 引擎的代理地址，如 http://127.0.0.1:7890")
     parser.add_argument("--ydl-cookies-from-browser", default="",
                         choices=["", "edge", "chrome", "firefox"],
                         help="读取浏览器已登录 Cookie 供 yt-dlp 使用（edge/chrome/firefox），"
-                             "用于 Instagram 等需要登录的平台")
+                             "用于需要登录的平台")
     parser.add_argument("--ydl-cookies-file", default="",
                         help="yt-dlp 使用的 cookies.txt（Netscape 格式）文件路径，"
-                             "用于 Instagram 等需要登录的平台")
-    parser.add_argument("--no-ydl", action="store_true", help="禁用 yt-dlp 兜底（仅用 parser_core）")
+                             "用于需要登录的平台")
     args = parser.parse_args()
 
     if args.text:
@@ -110,9 +108,8 @@ def main() -> None:
 
     proxy = args.proxy or args.ydl_proxy  # --proxy 全局代理优先，兼容旧 --ydl-proxy
     engine = ParseEngine(
-        bilibili_cookie=args.bilibili_cookie,
         quality=args.quality,
-        ydl_enabled=not args.no_ydl,
+        ydl_enabled=True,
         proxy=proxy,
         ydl_cookies_from_browser=args.ydl_cookies_from_browser,
         ydl_cookies_file=args.ydl_cookies_file,

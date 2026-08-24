@@ -369,8 +369,7 @@ class MediaToolApp(ctk.CTk):
     # ── 设置 ─────────────────────────────────────
 
     def _build_engine(self) -> ParseEngine:
-        return ParseEngine(bilibili_cookie=self.config.bilibili_cookie,
-                           quality=self.config.quality,
+        return ParseEngine(quality=self.config.quality,
                            proxy=self.config.proxy_url,
                            ydl_cookies_from_browser=self.config.ydl_cookies_from_browser,
                            ydl_cookies_file=self.config.ydl_cookies_file)
@@ -524,7 +523,7 @@ class MediaToolApp(ctk.CTk):
             for card, result, items in jobs:
                 sub_result = replace(result, items=items)
 
-                async def progress(label, done, total, c=card):
+                def progress(label, done, total, c=card):
                     self._ui(lambda l=label, d=done, t=total:
                                c.set_progress(l, d, t))
 

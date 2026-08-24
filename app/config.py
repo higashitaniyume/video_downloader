@@ -32,9 +32,8 @@ def _migrate_file(new_path: Path, legacy_name: str) -> None:
 
 
 def migrate_legacy_config() -> None:
-    """把旧位置（~/.video_downloader）的配置与扫码凭据迁移到当前目录。"""
+    """把旧位置（~/.video_downloader）的配置迁移到当前目录。"""
     _migrate_file(CONFIG_FILE, "config.json")
-    _migrate_file(CONFIG_DIR / "bilibili_credentials.json", "bilibili_credentials.json")
 
 # ── 清晰度档位 ──────────────────────────────────────────
 # 配置键 → (B 站 qn 上限, yt-dlp 最大高度)：
@@ -79,7 +78,6 @@ class AppConfig:
     """
 
     proxy_url: str = ""
-    bilibili_cookie: str = ""
     quality: str = DEFAULT_QUALITY
     ydl_cookies_from_browser: str = ""
     ydl_cookies_file: str = ""
@@ -98,7 +96,6 @@ class AppConfig:
             return cls()
         return cls(
             proxy_url=str(data.get("proxy_url", "") or "").strip(),
-            bilibili_cookie=str(data.get("bilibili_cookie", "") or "").strip(),
             quality=str(data.get("quality", DEFAULT_QUALITY) or DEFAULT_QUALITY).strip().lower(),
             ydl_cookies_from_browser=str(
                 data.get("ydl_cookies_from_browser", "") or "").strip().lower(),
