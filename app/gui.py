@@ -47,8 +47,8 @@ PLATFORM_COLORS = {
 }
 PLATFORM_DEFAULT_COLOR = "#8E8E93"
 
-COVER_WIDTH = 176
-COVER_HEIGHT = 99
+COVER_WIDTH = 160
+COVER_HEIGHT = 90
 
 
 def _format_bytes(size: int) -> str:
@@ -65,7 +65,11 @@ class ResultCard(ctk.CTkFrame):
     """单个解析结果卡片：元信息 + 封面 + 媒体勾选 + 下载进度。"""
 
     def __init__(self, master, result: ParseResult, on_download):
-        super().__init__(master, corner_radius=10, fg_color=("gray92", "gray17"))
+        super().__init__(
+            master, corner_radius=12,
+            fg_color=("#F8FAFC", "#1E293B"),
+            border_width=1, border_color=("#E2E8F0", "#334155")
+        )
         self.result = result
         self._on_download = on_download
         self._checkboxes: list[tuple[MediaItem, ctk.CTkCheckBox]] = []
@@ -73,80 +77,117 @@ class ResultCard(ctk.CTkFrame):
 
         self.grid_columnconfigure(1, weight=1)
 
-        platform_color = PLATFORM_COLORS.get(result.platform, PLATFORM_DEFAULT_COLOR)
-        badge = ctk.CTkLabel(
-            self, text=f" {result.platform} ", font=font(12, "bold"),
-            fg_color=platform_color, corner_radius=6, text_color="black",
+        # Left: Cover Image Container (rounded frame)
+        self.cover_frame = ctk.CTkFrame(
+            self, width=COVER_WIDTH, height=COVER_HEIGHT, corner_radius=8,
+            fg_color=("#E2E8F0", "#0F172A"), border_width=0
         )
-        badge.grid(row=0, column=0, sticky="nw", padx=(12, 8), pady=(12, 0))
+        self.cover_frame.grid(row=0, column=0, rowspan=4, sticky="nw", padx=12, pady=12)
+        self.cover_frame.grid_propagate(False)
+
+        self._cover_label = ctk.CTkLabel(
+            self.cover_frame, text="⏳ 加载中", font=font(10),
+            text_color=("#64748B", "#475569")
+        )
+        self._cover_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        platform_color = PLATFORM_COLORS.get(result.platform, PLATFORM_DEFAULT_COLOR)
+        if not result.cover_urls:
+            self.cover_frame.configure(fg_color=platform_color)
+            self._cover_label.configure(
+                text=result.platform.upper(), text_color="black", font=font(12, "bold")
+            )
+
+        # Right Info Layout
+        # Row 0: Badge + Title
+        header_frame = ctk.CTkFrame(self, fg_color="transparent")
+        header_frame.grid(row=0, column=1, sticky="ew", padx=(4, 12), pady=(12, 2))
+        header_frame.grid_columnconfigure(1, weight=1)
+
+        badge = ctk.CTkLabel(
+            header_frame, text=f" {result.platform.upper()} ", font=font(9, "bold"),
+            fg_color=platform_color, corner_radius=4, text_color="black", height=18
+        )
+        badge.grid(row=0, column=0, sticky="w")
 
         title_label = ctk.CTkLabel(
-            self, text=result.title or "(无标题)", font=font(15, "bold"),
-            wraplength=560, anchor="w", justify="left",
+            header_frame, text=result.title or "(无标题)", font=font(14, "bold"),
+            anchor="w", justify="left"
         )
-        title_label.grid(row=0, column=1, sticky="nw", padx=(0, 8), pady=(10, 0))
+        title_label.grid(row=0, column=1, sticky="ew", padx=(8, 0))
 
-        self._cover_label = ctk.CTkLabel(self, text="加载封面…", width=COVER_WIDTH,
-                                         height=COVER_HEIGHT, fg_color=("gray80", "gray25"))
-        self._cover_label.grid(row=0, column=3, rowspan=2, sticky="ne",
-                               padx=(8, 12), pady=(10, 0))
-        if not result.cover_urls:
-            self._cover_label.configure(
-                text=result.platform, fg_color=platform_color,
-                text_color="black", font=font(13, "bold"))
+        # Dynamic title wrap width
+        def _on_header_config(event, label=title_label):
+            label.configure(wraplength=max(200, event.width - 80))
+        header_frame.bind("<Configure>", _on_header_config)
 
+        # Row 1: Metadata (Author, Duration, Time)
         meta_parts = [result.author, result.duration_text, result.timestamp]
-        meta_line = " · ".join(p for p in meta_parts if p)
-        meta = ctk.CTkLabel(self, text=meta_line or " ", font=font(12),
-                            text_color=("gray40", "gray65"), anchor="w")
-        meta.grid(row=1, column=1, sticky="nw", padx=(0, 8))
-
-        if result.is_error:
-            error = ctk.CTkLabel(
-                self, text=f"解析失败：{result.error}", font=font(12),
-                text_color="#FF5252", anchor="w", wraplength=560, justify="left",
-            )
-            error.grid(row=2, column=1, columnspan=2, sticky="nw", padx=(0, 8))
-            self._cover_label.configure(text="")
-            self._cover_label.grid_remove()
-        elif not result.has_media:
-            hint = ctk.CTkLabel(
-                self, text="未解析到可用媒体直链", font=font(12),
-                text_color=("gray40", "gray60"), anchor="w",
-            )
-            hint.grid(row=2, column=1, columnspan=2, sticky="nw", padx=(0, 8))
-
-        # 媒体勾选行（每行最多 4 个，自动换行）
-        checkbox_frame = ctk.CTkFrame(self, fg_color="transparent")
-        checkbox_frame.grid(row=3, column=1, columnspan=2, sticky="w",
-                            padx=(0, 8), pady=(6, 0))
-        for col, item in enumerate(result.items):
-            row, inner_col = divmod(col, 4)
-            box = ctk.CTkCheckBox(checkbox_frame,
-                                  text=item.name or f"{item.kind} {item.index}",
-                                  font=font(13),
-                                  checkbox_width=20, checkbox_height=20)
-            box.select()
-            box.grid(row=row, column=inner_col, sticky="w",
-                     padx=(0, 12), pady=(2, 0))
-            self._checkboxes.append((item, box))
-
-        # 底部：下载按钮 + 进度条 + 状态
-        self._download_button = ctk.CTkButton(
-            self, text="下载全部", width=90, height=28,
-            command=lambda: self._on_download(self),
+        meta_line = "  •  ".join(p for p in meta_parts if p)
+        self.meta_label = ctk.CTkLabel(
+            self, text=meta_line or " ", font=font(11),
+            text_color=("#64748B", "#94A3B8"), anchor="w"
         )
-        self._download_button.grid(row=4, column=1, sticky="w", padx=(0, 8), pady=(8, 10))
+        self.meta_label.grid(row=1, column=1, sticky="w", padx=(4, 12), pady=(0, 4))
 
-        self._progress = ctk.CTkProgressBar(self, height=8)
+        # Row 2: Checkboxes or Error Info
+        if result.is_error:
+            error_label = ctk.CTkLabel(
+                self, text=f"❌ 解析失败：{result.error}", font=font(11),
+                text_color="#EF4444", anchor="w", justify="left"
+            )
+            error_label.grid(row=2, column=1, sticky="ew", padx=(4, 12), pady=(4, 8))
+            self._cover_label.configure(text="❌ 错误")
+
+            def _on_error_config(event, label=error_label):
+                label.configure(wraplength=max(200, event.width - 20))
+            self.bind("<Configure>", _on_error_config)
+        elif not result.has_media:
+            hint_label = ctk.CTkLabel(
+                self, text="⚠️ 未解析到可用媒体链接", font=font(11),
+                text_color=("#64748B", "#64748B"), anchor="w"
+            )
+            hint_label.grid(row=2, column=1, sticky="w", padx=(4, 12), pady=(4, 8))
+            self._cover_label.configure(text="⚠️ 空")
+        else:
+            checkbox_frame = ctk.CTkFrame(self, fg_color="transparent")
+            checkbox_frame.grid(row=2, column=1, sticky="w", padx=(4, 12), pady=(4, 6))
+            for col, item in enumerate(result.items):
+                row, inner_col = divmod(col, 4)
+                box = ctk.CTkCheckBox(
+                    checkbox_frame, text=item.name or f"{item.kind} {item.index}",
+                    font=font(11), checkbox_width=16, checkbox_height=16,
+                    corner_radius=4, border_width=2,
+                    fg_color="#6366F1", hover_color="#4F46E5"
+                )
+                box.select()
+                box.grid(row=row, column=inner_col, sticky="w", padx=(0, 10), pady=2)
+                self._checkboxes.append((item, box))
+
+        # Row 3: Download Button & Progress Bar
+        action_frame = ctk.CTkFrame(self, fg_color="transparent")
+        action_frame.grid(row=3, column=1, sticky="ew", padx=(4, 12), pady=(4, 12))
+        action_frame.grid_columnconfigure(1, weight=1)
+
+        self._download_button = ctk.CTkButton(
+            action_frame, text="📥 下载", width=70, height=26, font=font(11, "bold"),
+            fg_color="#6366F1", hover_color="#4F46E5", text_color="white",
+            command=lambda: self._on_download(self)
+        )
+        self._download_button.grid(row=0, column=0, sticky="w", padx=(0, 8))
+
+        self._progress = ctk.CTkProgressBar(
+            action_frame, height=6, fg_color=("#E2E8F0", "#334155"),
+            progress_color="#10B981"
+        )
         self._progress.set(0)
-        self._progress.grid(row=4, column=2, sticky="ew", padx=(0, 8), pady=(14, 10))
-        self.grid_columnconfigure(2, weight=1)
+        self._progress.grid(row=0, column=1, sticky="ew", padx=(0, 8))
 
-        self._status_label = ctk.CTkLabel(self, text="", font=font(11),
-                                          text_color=("gray40", "gray60"), anchor="w")
-        self._status_label.grid(row=5, column=1, columnspan=3, sticky="w",
-                                padx=(12, 8), pady=(0, 8))
+        self._status_label = ctk.CTkLabel(
+            self, text="", font=font(10),
+            text_color=("#64748B", "#64748B"), anchor="w"
+        )
+        self._status_label.grid(row=4, column=1, sticky="w", padx=(4, 12), pady=(0, 8))
 
     # ── 对外接口 ─────────────────────────────
 
@@ -156,14 +197,15 @@ class ResultCard(ctk.CTkFrame):
     def set_cover(self, image: Optional[ctk.CTkImage]) -> None:
         self._cover_image = image
         if image is None:
-            self._cover_label.configure(text="无封面", image=None)
+            if self.result.cover_urls:
+                self._cover_label.configure(text="无封面", image=None)
         else:
             self._cover_label.configure(text="", image=image)
 
     def set_downloading(self, downloading: bool) -> None:
         self._download_button.configure(
             state="disabled" if downloading else "normal",
-            text="下载中…" if downloading else "下载全部",
+            text="下载中…" if downloading else "📥 下载",
         )
 
     def set_progress(self, label: str, done: int, total: Optional[int]) -> None:
@@ -177,7 +219,7 @@ class ResultCard(ctk.CTkFrame):
     def finish_download(self, summary: DownloadSummary) -> None:
         self.set_downloading(False)
         self._progress.set(1.0)
-        text = f"已下载 {summary.ok_count} 个文件"
+        text = f"✅ 已下载 {summary.ok_count} 个文件"
         if summary.errors:
             text += "，" + "；".join(summary.errors[:2])
         self._status_label.configure(text=text)
@@ -190,8 +232,8 @@ class MediaToolApp(ctk.CTk):
         ctk.set_default_color_theme("blue")
 
         self.title("视频/媒体解析下载工具")
-        self.geometry("1100x760")
-        self.minsize(900, 600)
+        self.geometry("1180x780")
+        self.minsize(950, 600)
 
         self.config = AppConfig.load()
         self.engine = self._build_engine()
@@ -205,92 +247,201 @@ class MediaToolApp(ctk.CTk):
 
         self._build_layout()
         if self.config.proxy_url:
-            self.status_label.configure(text=f"代理已启用：{self.config.proxy_url}")
+            self.status_label.configure(text=f"ℹ️ 代理已启用：{self.config.proxy_url}")
 
     # ── 布局 ─────────────────────────────────
 
     def _build_layout(self) -> None:
         self.grid_columnconfigure(0, weight=0)
         self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
 
-        sidebar = ctk.CTkFrame(self, width=430, corner_radius=10)
-        sidebar.grid(row=0, column=0, rowspan=2, sticky="nsw", padx=(12, 8), pady=12)
+        self.configure(fg_color=("#F8FAFC", "#0B0F19"))
+
+        # Left Sidebar Frame
+        sidebar = ctk.CTkFrame(
+            self, width=380, corner_radius=16,
+            fg_color=("#FFFFFF", "#111827"),
+            border_width=1, border_color=("#E2E8F0", "#1F2937")
+        )
+        sidebar.grid(row=0, column=0, sticky="nsew", padx=16, pady=16)
         sidebar.grid_propagate(False)
         sidebar.grid_columnconfigure(0, weight=1)
+        sidebar.grid_rowconfigure(8, weight=1)
 
-        ctk.CTkLabel(sidebar, text="粘贴链接（支持多行，自动识别平台）",
-                     font=font(13, "bold"),
-                     anchor="w").grid(row=0, column=0, sticky="w", padx=14, pady=(14, 6))
+        # Title Brand Header
+        brand_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
+        brand_frame.grid(row=0, column=0, sticky="ew", padx=20, pady=(20, 16))
+        brand_frame.grid_columnconfigure(0, weight=1)
 
-        self.input_box = ctk.CTkTextbox(sidebar, height=150, wrap="word",
-                                        font=font(13))
-        self.input_box.grid(row=1, column=0, sticky="ew", padx=14)
+        ctk.CTkLabel(
+            brand_frame, text="⚡ yt-dlp GUI Downloader", font=font(16, "bold"),
+            text_color=("#1E293B", "#F8FAFC"), anchor="w"
+        ).grid(row=0, column=0, sticky="w")
 
-        self.parse_button = ctk.CTkButton(sidebar, text="解析链接", height=36,
-                                          command=self._on_parse)
-        self.parse_button.grid(row=2, column=0, sticky="ew", padx=14, pady=(10, 4))
-        btn_row = ctk.CTkFrame(sidebar, fg_color="transparent")
-        btn_row.grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 10))
-        btn_row.grid_columnconfigure(0, weight=1)
-        btn_row.grid_columnconfigure(1, weight=1)
-        btn_row.grid_columnconfigure(2, weight=1)
-        self.clear_button = ctk.CTkButton(btn_row, text="清空", height=28,
-                                          fg_color="transparent", border_width=1,
-                                          command=self._on_clear)
+        ctk.CTkLabel(
+            brand_frame, text="v1.0.0", font=font(10, "bold"),
+            text_color="#6366F1", fg_color=("#EEF2F6", "#1E1B4B"),
+            corner_radius=6, height=18
+        ).grid(row=0, column=1, sticky="e", padx=(8, 0))
+
+        # --- Section 1: Input & Parse ---
+        input_sec = ctk.CTkFrame(
+            sidebar, fg_color=("#F1F5F9", "#1E293B"), corner_radius=12,
+            border_width=1, border_color=("#E2E8F0", "#334155")
+        )
+        input_sec.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 12))
+        input_sec.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            input_sec, text="🔗 粘贴链接（支持多行，自动识别）", font=font(12, "bold"),
+            text_color=("#475569", "#94A3B8"), anchor="w"
+        ).grid(row=0, column=0, sticky="w", padx=14, pady=(12, 6))
+
+        self.input_box = ctk.CTkTextbox(
+            input_sec, height=140, wrap="word", font=font(12),
+            fg_color=("#FFFFFF", "#0F172A"), border_width=1, border_color=("#CBD5E1", "#1F2937")
+        )
+        self.input_box.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 10))
+
+        # Primary Parse Button on its own row
+        self.parse_button = ctk.CTkButton(
+            input_sec, text="⚡ 解析链接", height=36, font=font(12, "bold"),
+            fg_color="#6366F1", hover_color="#4F46E5", text_color="white",
+            command=self._on_parse
+        )
+        self.parse_button.grid(row=2, column=0, sticky="ew", padx=14, pady=(0, 8))
+
+        # Secondary Actions Row (Clear, Log, Settings) - sharing 3 columns
+        btn_sec = ctk.CTkFrame(input_sec, fg_color="transparent")
+        btn_sec.grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 12))
+        btn_sec.grid_columnconfigure(0, weight=1)
+        btn_sec.grid_columnconfigure(1, weight=1)
+        btn_sec.grid_columnconfigure(2, weight=1)
+
+        self.clear_button = ctk.CTkButton(
+            btn_sec, text="🧹 清空", height=30, font=font(11),
+            fg_color="transparent", border_width=1, border_color=("#CBD5E1", "#475569"),
+            text_color=("#1E293B", "#F1F5F9"), hover_color=("#E2E8F0", "#334155"),
+            command=self._on_clear
+        )
         self.clear_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
-        self.log_button = ctk.CTkButton(btn_row, text="日志", height=28,
-                                        fg_color="transparent", border_width=1,
-                                        command=self._open_logs_folder)
-        self.log_button.grid(row=0, column=1, sticky="ew", padx=(4, 4))
-        self.settings_button = ctk.CTkButton(btn_row, text="设置", height=28,
-                                             fg_color="transparent", border_width=1,
-                                             command=self._open_settings)
+
+        self.log_button = ctk.CTkButton(
+            btn_sec, text="📝 日志", height=30, font=font(11),
+            fg_color="transparent", border_width=1, border_color=("#CBD5E1", "#475569"),
+            text_color=("#1E293B", "#F1F5F9"), hover_color=("#E2E8F0", "#334155"),
+            command=self._open_logs_folder
+        )
+        self.log_button.grid(row=0, column=1, sticky="ew", padx=2)
+
+        self.settings_button = ctk.CTkButton(
+            btn_sec, text="⚙️ 设置", height=30, font=font(11),
+            fg_color="transparent", border_width=1, border_color=("#CBD5E1", "#475569"),
+            text_color=("#1E293B", "#F1F5F9"), hover_color=("#E2E8F0", "#334155"),
+            command=self._open_settings
+        )
         self.settings_button.grid(row=0, column=2, sticky="ew", padx=(4, 0))
 
-        ctk.CTkLabel(sidebar, text="输出目录", font=font(13, "bold"),
-                     anchor="w").grid(row=4, column=0, sticky="w", padx=14, pady=(6, 4))
+        # --- Section 2: Output Path ---
+        out_sec = ctk.CTkFrame(
+            sidebar, fg_color=("#F1F5F9", "#1E293B"), corner_radius=12,
+            border_width=1, border_color=("#E2E8F0", "#334155")
+        )
+        out_sec.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 12))
+        out_sec.grid_columnconfigure(0, weight=1)
 
-        out_row = ctk.CTkFrame(sidebar, fg_color="transparent")
-        out_row.grid(row=5, column=0, sticky="ew", padx=14)
+        ctk.CTkLabel(
+            out_sec, text="📁 下载保存路径", font=font(12, "bold"),
+            text_color=("#475569", "#94A3B8"), anchor="w"
+        ).grid(row=0, column=0, sticky="w", padx=14, pady=(12, 6))
+
+        out_row = ctk.CTkFrame(out_sec, fg_color="transparent")
+        out_row.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 12))
         out_row.grid_columnconfigure(0, weight=1)
-        self.out_entry = ctk.CTkEntry(out_row, font=font(12))
+
+        self.out_entry = ctk.CTkEntry(
+            out_row, font=font(11), height=30,
+            fg_color=("#FFFFFF", "#0F172A"), border_width=1, border_color=("#CBD5E1", "#1F2937")
+        )
         self.out_entry.insert(0, str(self._out_dir))
         self.out_entry.grid(row=0, column=0, sticky="ew")
         self.out_entry.bind("<Return>", lambda _e: self._on_out_dir_changed())
-        ctk.CTkButton(out_row, text="浏览", width=60, height=28,
-                      command=self._on_browse_dir).grid(row=0, column=1, padx=(6, 0))
+
+        ctk.CTkButton(
+            out_row, text="浏览...", width=50, height=30, font=font(11, "bold"),
+            fg_color=("#E2E8F0", "#334155"), hover_color=("#CBD5E1", "#475569"),
+            text_color=("#1E293B", "#F1F5F9"),
+            command=self._on_browse_dir
+        ).grid(row=0, column=1, padx=(6, 0))
+
+        # --- Section 3: Downloads & Task control ---
+        download_sec = ctk.CTkFrame(
+            sidebar, fg_color=("#F1F5F9", "#1E293B"), corner_radius=12,
+            border_width=1, border_color=("#E2E8F0", "#334155")
+        )
+        download_sec.grid(row=3, column=0, sticky="ew", padx=16, pady=(0, 12))
+        download_sec.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            download_sec, text="📥 批量下载与任务控制", font=font(12, "bold"),
+            text_color=("#475569", "#94A3B8"), anchor="w"
+        ).grid(row=0, column=0, sticky="w", padx=14, pady=(12, 6))
 
         self.download_selected_button = ctk.CTkButton(
-            sidebar, text="下载所选（全部卡片勾选项）", height=34,
-            command=self._on_download_selected)
-        self.download_selected_button.grid(row=6, column=0, sticky="ew",
-                                           padx=14, pady=(12, 4))
+            download_sec, text="📥 下载全部勾选任务", height=36, font=font(12, "bold"),
+            fg_color="#10B981", hover_color="#059669", text_color="white",
+            command=self._on_download_selected
+        )
+        self.download_selected_button.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 8))
 
-        # 下载控制：暂停/继续 + 取消（下载期间可用）
-        ctrl_row = ctk.CTkFrame(sidebar, fg_color="transparent")
-        ctrl_row.grid(row=7, column=0, sticky="ew", padx=14)
+        ctrl_row = ctk.CTkFrame(download_sec, fg_color="transparent")
+        ctrl_row.grid(row=2, column=0, sticky="ew", padx=14, pady=(0, 12))
         ctrl_row.grid_columnconfigure(0, weight=1)
         ctrl_row.grid_columnconfigure(1, weight=1)
-        self.pause_button = ctk.CTkButton(ctrl_row, text="暂停", height=28,
-                                          state="disabled",
-                                          command=self._on_pause_toggle)
-        self.pause_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        self.cancel_button = ctk.CTkButton(ctrl_row, text="取消下载", height=28,
-                                           fg_color="#B03030", hover_color="#D04040",
-                                           state="disabled",
-                                           command=self._on_cancel_download)
-        self.cancel_button.grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
-        self.status_label = ctk.CTkLabel(sidebar, text="就绪", font=font(12),
-                                         text_color=("gray40", "gray60"),
-                                         anchor="w", wraplength=400, justify="left")
-        self.status_label.grid(row=8, column=0, sticky="w", padx=14, pady=(8, 14))
+        self.pause_button = ctk.CTkButton(
+            ctrl_row, text="⏸️ 暂停", height=30, font=font(11, "bold"),
+            fg_color=("#E2E8F0", "#334155"), hover_color=("#CBD5E1", "#475569"),
+            text_color=("#1E293B", "#F1F5F9"), state="disabled",
+            command=self._on_pause_toggle
+        )
+        self.pause_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
 
-        self.results_frame = ctk.CTkScrollableFrame(self, corner_radius=10,
-                                                    fg_color="transparent")
-        self.results_frame.grid(row=0, column=1, rowspan=2, sticky="nsew",
-                                padx=(0, 12), pady=12)
+        self.cancel_button = ctk.CTkButton(
+            ctrl_row, text="⏹️ 取消下载", height=30, font=font(11, "bold"),
+            fg_color="#EF4444", hover_color="#DC2626", text_color="white",
+            state="disabled",
+            command=self._on_cancel_download
+        )
+        self.cancel_button.grid(row=0, column=1, sticky="ew", padx=(4, 0))
+
+        # --- Section 4: System Status Footer ---
+        status_sec = ctk.CTkFrame(
+            sidebar, fg_color=("#E2E8F0", "#1E293B"), corner_radius=10
+        )
+        status_sec.grid(row=8, column=0, sticky="sew", padx=16, pady=16)
+        status_sec.grid_columnconfigure(0, weight=1)
+
+        self.status_label = ctk.CTkLabel(
+            status_sec, text="ℹ️ 系统就绪", font=font(11),
+            text_color=("#334155", "#94A3B8"),
+            anchor="w", justify="left"
+        )
+        self.status_label.grid(row=0, column=0, sticky="w", padx=12, pady=10)
+
+        # Dynamic Status wrap
+        def _on_status_config(event, label=self.status_label):
+            label.configure(wraplength=max(200, event.width - 24))
+        status_sec.bind("<Configure>", _on_status_config)
+
+        # Right Scrollable Results Area
+        self.results_frame = ctk.CTkScrollableFrame(
+            self, corner_radius=16,
+            fg_color=("#FFFFFF", "#111827"),
+            border_width=1, border_color=("#E2E8F0", "#1F2937")
+        )
+        self.results_frame.grid(row=0, column=1, sticky="nsew", padx=(0, 16), pady=16)
         self.results_frame.grid_columnconfigure(0, weight=1)
 
     # ── 线程安全 UI 更新 ────────────────────────
@@ -317,7 +468,7 @@ class MediaToolApp(ctk.CTk):
     def _set_busy(self, busy: bool, text: Optional[str] = None) -> None:
         self._busy = busy
         self.parse_button.configure(state="disabled" if busy else "normal",
-                                    text="解析中…" if busy else "解析链接")
+                                    text="解析中…" if busy else "⚡ 解析链接")
         if text is not None:
             self.status_label.configure(text=text)
 
@@ -326,7 +477,7 @@ class MediaToolApp(ctk.CTk):
             return
         text = self.input_box.get("1.0", "end").strip()
         if not text:
-            self.status_label.configure(text="请先粘贴链接")
+            self.status_label.configure(text="⚠️ 请先粘贴链接")
             return
         logger.info("开始解析（文本 %d 字符）", len(text))
         self._set_busy(True, "正在解析…")
@@ -336,15 +487,15 @@ class MediaToolApp(ctk.CTk):
         try:
             results = self.engine.parse_text_sync(text)
         except Exception as exc:  # noqa: BLE001
-            self._ui(lambda: self._set_busy(False, f"解析出错：{exc}"))
+            self._ui(lambda: self._set_busy(False, f"❌ 解析出错：{exc}"))
             return
         self._ui(lambda: self._render_results(results))
 
     def _render_results(self, results: list[ParseResult]) -> None:
         self._clear_cards()
-        if not results:
+        if not font or not results:
             logger.info("未识别到可解析的链接")
-            self._set_busy(False, "未识别到可解析的链接")
+            self._set_busy(False, "⚠️ 未识别到可解析的链接")
             return
         for result in results:
             card = ResultCard(self.results_frame, result, self._on_card_download)
@@ -354,7 +505,7 @@ class MediaToolApp(ctk.CTk):
                 threading.Thread(target=self._cover_worker,
                                  args=(card, result), daemon=True).start()
         logger.info("解析完成，共 %d 条", len(results))
-        self._set_busy(False, f"解析完成，共 {len(results)} 条")
+        self._set_busy(False, f"✅ 解析完成，共 {len(results)} 条")
 
     def _clear_cards(self) -> None:
         for card in self._cards:
@@ -364,7 +515,7 @@ class MediaToolApp(ctk.CTk):
     def _on_clear(self) -> None:
         self.input_box.delete("1.0", "end")
         self._clear_cards()
-        self.status_label.configure(text="已清空")
+        self.status_label.configure(text="🧹 已清空")
 
     # ── 设置 ─────────────────────────────────────
 
@@ -387,7 +538,7 @@ class MediaToolApp(ctk.CTk):
             os.startfile(str(log_dir))  # Windows 资源管理器
         except Exception as exc:  # noqa: BLE001
             logger.warning("打开日志文件夹失败: %s", exc)
-            self.status_label.configure(text=f"无法打开日志文件夹：{exc}")
+            self.status_label.configure(text=f"❌ 无法打开日志文件夹：{exc}")
 
     def _apply_settings(self, config: AppConfig) -> None:
         self.config = config
@@ -401,7 +552,7 @@ class MediaToolApp(ctk.CTk):
             notes.append(f"清晰度：{config.quality}")
         note = f"（{'，'.join(notes)}）" if notes else ""
         logger.info("设置已保存（代理=%s，清晰度=%s）", config.proxy_url or "-", config.quality)
-        self.status_label.configure(text=f"设置已保存{note}")
+        self.status_label.configure(text=f"⚙️ 设置已保存{note}")
 
     def _cover_worker(self, card: ResultCard, result: ParseResult) -> None:
         try:
@@ -443,7 +594,7 @@ class MediaToolApp(ctk.CTk):
 
     def _on_out_dir_changed(self) -> None:
         self._downloader = None
-        self.status_label.configure(text=f"输出目录：{self.out_entry.get().strip()}")
+        self.status_label.configure(text=f"📁 输出目录已更改为：{self.out_entry.get().strip()}")
 
     def _on_browse_dir(self) -> None:
         chosen = filedialog.askdirectory(initialdir=str(self._out_dir))
@@ -455,7 +606,7 @@ class MediaToolApp(ctk.CTk):
     def _on_card_download(self, card: ResultCard) -> None:
         items = card.selected_items()
         if not items:
-            self.status_label.configure(text="请先勾选要下载的媒体")
+            self.status_label.configure(text="⚠️ 请先勾选要下载的媒体")
             return
         self._start_download_jobs([(card, card.result, items)])
 
@@ -463,7 +614,7 @@ class MediaToolApp(ctk.CTk):
         jobs = [(card, card.result, card.selected_items())
                 for card in self._cards if card.selected_items()]
         if not jobs:
-            self.status_label.configure(text="没有勾选任何媒体")
+            self.status_label.configure(text="⚠️ 没有勾选任何下载任务")
             return
         self._start_download_jobs(jobs)
 
@@ -472,7 +623,7 @@ class MediaToolApp(ctk.CTk):
     def _set_control_buttons(self, active: bool, paused: bool = False) -> None:
         self.pause_button.configure(
             state="normal" if active else "disabled",
-            text="继续" if paused else "暂停",
+            text="▶️ 继续" if paused else "⏸️ 暂停",
         )
         self.cancel_button.configure(state="normal" if active else "disabled")
 
@@ -482,12 +633,12 @@ class MediaToolApp(ctk.CTk):
             return
         if control.is_paused:
             control.resume()
-            self.pause_button.configure(text="暂停")
-            self.status_label.configure(text="继续下载…")
+            self.pause_button.configure(text="⏸️ 暂停")
+            self.status_label.configure(text="▶️ 继续下载…")
         else:
             control.pause()
-            self.pause_button.configure(text="继续")
-            self.status_label.configure(text="已暂停")
+            self.pause_button.configure(text="▶️ 继续")
+            self.status_label.configure(text="⏸️ 已暂停")
 
     def _on_cancel_download(self) -> None:
         control = self._active_control
@@ -495,20 +646,20 @@ class MediaToolApp(ctk.CTk):
             return
         control.cancel()
         self.cancel_button.configure(state="disabled")
-        self.status_label.configure(text="正在取消…")
+        self.status_label.configure(text="⏹️ 正在取消下载…")
 
     # ── 下载执行 ────────────────────────────────
 
     def _start_download_jobs(self, jobs) -> None:
         if self._busy:
-            self.status_label.configure(text="正在处理中，请稍候")
+            self.status_label.configure(text="⚠️ 正在处理中，请稍候")
             return
         for card, _result, _items in jobs:
             card.set_downloading(True)
         total_items = sum(len(items) for _, _, items in jobs)
-        logger.info("开始下载 %d 个媒体项（输出目录：%s）", total_items, out_dir)
-        self._set_busy(True, f"开始下载 {total_items} 个媒体…")
         out_dir = Path(self.out_entry.get().strip() or str(self._out_dir))
+        logger.info("开始下载 %d 个媒体项（输出目录：%s）", total_items, out_dir)
+        self._set_busy(True, f"📥 开始下载 {total_items} 个媒体任务…")
         control = DownloadControl()
         self._active_control = control
         self._set_control_buttons(True)
@@ -530,19 +681,17 @@ class MediaToolApp(ctk.CTk):
                 summary = downloader.download_result_sync(sub_result, progress, control)
                 done_cards.add(card)
                 self._ui(lambda s=summary, c=card: c.finish_download(s))
-            self._ui(lambda: self._set_busy(False, "下载完成"))
+            self._ui(lambda: self._set_busy(False, "✅ 所有任务下载完成"))
         except TaskCancelled:
             cancelled = True
-            self._ui(lambda: self._set_busy(False, "下载已取消"))
+            self._ui(lambda: self._set_busy(False, "⏹️ 下载已取消"))
         except Exception as exc:  # noqa: BLE001
-            self._ui(lambda: self._set_busy(False, f"下载出错：{exc}"))
+            self._ui(lambda: self._set_busy(False, f"❌ 下载出错：{exc}"))
         finally:
             for card, _result, _items in jobs:
                 if card not in done_cards:
-                    # 取消/出错时把未完成卡片的按钮恢复可用
                     self._ui(lambda c=card: c.set_downloading(False))
             if cancelled:
-                # 中断下载管理器内可能仍在运行的任务（管理器保持可复用）
                 downloader.cancel_active()
             self._ui(lambda: self._set_control_buttons(False))
             self._active_control = None
