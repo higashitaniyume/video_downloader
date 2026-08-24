@@ -56,6 +56,27 @@ python cli.py --proxy http://127.0.0.1:7890 --download "https://www.youtube.com/
 python cli.py --ydl-cookies-from-browser edge "https://www.instagram.com/p/xxx"
 ```
 
+### Android (安卓客户端)
+
+本项目同时包含一个完整的安卓客户端（位于 `android/` 目录），提供移动端的原生下载体验。
+
+* **核心架构**：基于 **Jetpack Compose** 现代化声明式 UI 开发，后台通过 **Chaquopy** 桥接并运行核心 Python 解析引擎；同时打包了移动端定制版 **FFmpeg** 库以提供移动端音视频后台合并合成支持。
+* **主要特性**：
+  * **现代化设计**：原生深色模式支持，基于底部导航栏分离「解析下载」与「代理配置」页。
+  * **智能交互**：支持剪贴板快捷粘贴与输入一键清空；解析过程中伴随自动滚动对焦与流畅的加载动画。
+  * **封面预览**：集成 Coil 异步图片加载库，并自动拦截 HTTP 协议升级至 HTTPS，同时伪造 Referer 头部绕过哔哩哔哩/抖音等平台的图片防盗链，完美展示视频封面预览。
+  * **任务队列**：正在进行的下载以卡片流形式展示，且新启动的任务将置顶并伴随展开动画。
+  * **安全分享**：支持 Android 7.0+ 原生文件 Provider 安全分享（支持一键发送到微信、QQ 等第三方应用），支持直接打开播放及定位文件夹。
+
+* **编译方式**：
+  1. 使用 Android Studio 打开 `android/` 目录。
+  2. 同步 Gradle 并点击运行到真实 Android 设备。
+  3. 或者直接运行本地 Gradle 任务：
+     ```bash
+     cd android
+     ./gradlew assembleDebug
+     ```
+
 ## 项目结构
 
 ```

@@ -1,0 +1,95 @@
+name: build-apk
+
+# 提示：若需构建正式签名的 Release APK，请在 GitHub Repository Secrets 中配置以下密钥：
+#   - SIGNING_KEY: 证书文件 (.jks 或 .keystore) 的 Base64 编码字符串
+#   - ALIAS: 证书别名
+#   - KEY_STORE_PASSWORD: 证书库密码
+#   - KEY_PASSWORD: 密钥密码
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: 缓存 Gradle 依赖
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: 给 gradlew 赋予执行权限
+        run: chmod +x android/gradlew
+
+      - name: 编译 APK
+        run: |
+          cd android
+          if [ "${{ secrets.SIGNING_KEY }}" != "" ]; then
+            echo "Signing key detected. Building Release APK..."
+            ./gradlew assembleRelease
+          else
+            echo "No signing key. Building Debug APK..."
+            ./gradlew assembleDebug
+          fi
+
+      - name: 签名 Release APK
+        if: secrets.SIGNING_KEY != ''
+        uses: r0adkll/sign-android-release@v1
+        id: sign_app
+        with:
+          releaseDirectory: android/app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+
+      - name: 准备发布产物
+        run: |
+          mkdir -p stage
+          if [ -d "android/app/build/outputs/apk/release" ]; then
+            SIGNED_APK=$(find android/app/build/outputs/apk/release -name "*-signed.apk" | head -n 1)
+            if [ -n "$SIGNED_APK" ]; then
+              echo "Found signed Release APK: $SIGNED_APK"
+              cp "$SIGNED_APK" stage/video-downloader.apk
+            else
+              echo "No signed APK found. Copying unsigned Release APK..."
+              cp android/app/build/outputs/apk/release/app-release-unsigned.apk stage/video-downloader.apk
+            fi
+          else
+            echo "Copying Debug APK..."
+            cp android/app/build/outputs/apk/debug/app-debug.apk stage/video-downloader.apk
+          fi
+
+      - name: 上传构建产物 (Artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-downloader-apk
+          path: stage/video-downloader.apk
+          retention-days: 7
+
+      - name: 发布到 GitHub Release (仅打 v* 标签时)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" stage/video-downloader.apk --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" stage/video-downloader.apk --generate-notes --title "video-downloader $GITHUB_REF_NAME"
+          fi

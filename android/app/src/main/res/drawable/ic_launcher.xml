@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="512dp"
+    android:height="512dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <!-- Circle background -->
+    <path
+        android:fillColor="#f2f2f2"
+        android:strokeColor="#afafaf"
+        android:strokeWidth="8"
+        android:pathData="M 256.00003,256.00006 m -241.31339,0 a 241.31339,241.31339 0 1,0 482.62678,0 a 241.31339,241.31339 0 1,0 -482.62678,0" />
+    
+    <!-- Android head group (applying matrix scale and translations) -->
+    <group
+        android:scaleX="1.3431189"
+        android:scaleY="1.3431189"
+        android:translateX="-57.649155"
+        android:translateY="0.0">
+        <!-- Eyes and Head path -->
+        <path
+            android:fillColor="#3ddb85"
+            android:pathData="m 293.91,212.775 c -6.025,0 -10.926,-4.905 -10.926,-10.93 0,-6.025 4.901,-10.926 10.926,-10.926 6.026,0 10.927,4.9 10.927,10.926 0,6.025 -4.901,10.93 -10.927,10.93 m -120.774,0 c -6.025,0 -10.926,-4.905 -10.926,-10.93 0,-6.025 4.9,-10.926 10.926,-10.926 6.025,0 10.926,4.9 10.926,10.926 0,6.025 -4.9,10.93 -10.926,10.93 m 124.693,-65.82 21.838,-37.822 a 4.548,4.548 0 0 0 -1.663,-6.206 4.549,4.549 0 0 0 -6.206,1.663 l -22.111,38.3 c -16.91,-7.716 -35.9,-12.015 -56.164,-12.015 -20.264,0 -39.254,4.299 -56.163,12.015 l -22.112,-38.3 a 4.549,4.549 0 0 0 -6.206,-1.663 4.545,4.545 0 0 0 -1.663,6.206 l 21.838,37.822 c -37.499,20.395 -63.146,58.358 -66.898,103.209 h 262.408 c -3.755,-44.85 -29.402,-82.814 -66.898,-103.21" />
+    </group>
+</vector>

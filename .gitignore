@@ -20,3 +20,15 @@ bilibili_credentials.json
 *.spec
 # 日志
 logs/
+
+# Android Build outputs
+android/.gradle/
+android/local.properties
+android/app/build/
+android/app/src/main/python/app/
+
+# Signing keys (NEVER commit these)
+*.jks
+*.keystore
+
+android/.idea/

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import threading
 from pathlib import Path
@@ -173,6 +174,12 @@ class YdlEngine:
                 logger.warning("yt-dlp cookies 文件不存在，已忽略: %s", self.cookies_file)
         if self.cookies_from_browser in BROWSER_CHOICES:
             opts["cookiesfrombrowser"] = (self.cookies_from_browser,)
+            
+        # Support custom ffmpeg binary path (specifically for Android/Chaquopy)
+        ffmpeg_path = os.environ.get("FFMPEG_BINARY_PATH")
+        if ffmpeg_path:
+            opts["ffmpeg_location"] = ffmpeg_path
+            
         return opts
 
     def extract(self, url: str) -> tuple[Optional[ParseResult], str]:
@@ -213,6 +220,9 @@ class YdlDownloader:
             "noplaylist": True,
             "socket_timeout": self.timeout,
         }
+        ffmpeg_bin = os.environ.get("FFMPEG_BINARY_PATH")
+        if ffmpeg_bin:
+            opts["ffmpeg_location"] = ffmpeg_bin
         if self.proxy:
             opts["proxy"] = self.proxy
         if self.cookies_file:

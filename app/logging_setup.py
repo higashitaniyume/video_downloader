@@ -29,6 +29,9 @@ _log_dir: Optional[Path] = None
 
 def program_dir() -> Path:
     """程序所在文件夹：打包运行时为 exe 所在目录，开发模式为当前工作目录。"""
+    _android_data = os.environ.get("ANDROID_DATA_DIR")
+    if _android_data:
+        return Path(_android_data)
     if getattr(sys, "frozen", False):
         try:
             return Path(sys.executable).resolve().parent

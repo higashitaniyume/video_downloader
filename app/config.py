@@ -6,11 +6,16 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-CONFIG_DIR = Path.cwd()
+_android_data = os.environ.get("ANDROID_DATA_DIR")
+if _android_data:
+    CONFIG_DIR = Path(_android_data)
+else:
+    CONFIG_DIR = Path.cwd()
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 # 旧版本配置目录（~/.video_downloader）：首次运行时自动迁移到当前目录
