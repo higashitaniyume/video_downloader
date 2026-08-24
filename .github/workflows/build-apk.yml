@@ -13,6 +13,9 @@ jobs:
   build-android-apk:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -56,10 +59,10 @@ jobs:
       - name: 解析版本与项目名称
         run: |
           PROJECT_NAME=$(python3 -c "import re; m = re.search(r'name\s*=\s*\"([^\"]+)\"', open('pyproject.toml', encoding='utf-8').read()); print(m.group(1) if m else 'video-downloader')")
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+          if [ "${{ github.ref_type }}" = "tag" ]; then
             VERSION="${{ github.ref_name }}"
           else
-            PY_VER=$(python3 -c "import re; m = re.search(r'version\s*=\s*\"([^\"]+)\"', open('pyproject.toml', encoding='utf-8').read()); print(m.group(1) if m else '1.0.0')")
+            PY_VER=$(python3 -c "import re; m = re.search(r'version\s*=\s*\"([^\"]+)\"', open('pyproject.toml', encoding='utf-8').read()); print(m.group(1) if m else '1.2.0')")
             VERSION="v${PY_VER}"
           fi
           echo "PROJECT_NAME=${PROJECT_NAME}" >> $GITHUB_ENV
