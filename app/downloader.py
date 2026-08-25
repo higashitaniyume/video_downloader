@@ -65,6 +65,11 @@ class MediaDownloader:
         progress: Optional[ProgressCallback] = None,
         control: Optional[DownloadControl] = None,
     ) -> DownloadSummary:
+        if result.platform.lower() == "jm" or result.parser_name.lower() == "jm":
+            from .parsers.jm import JMDownloader
+            jm_dl = JMDownloader(self.out_dir, proxy=self.proxy)
+            return jm_dl.download_result_sync(result, result.items, progress, control)
+
         from .ydl import YdlDownloader
         downloader = YdlDownloader(
             self.out_dir, proxy=self.proxy,

@@ -245,6 +245,12 @@ class YdlDownloader:
 
         control 非空时支持取消（item 间生效）；TaskCancelled 向上传播。
         """
+        if (result.platform or "").lower() == "jm" or (result.parser_name or "").lower() == "jm":
+            from .parsers.jm import JMDownloader
+            return JMDownloader(self.out_dir, proxy=self.proxy).download_result_sync(
+                result, items, progress, control
+            )
+
         summary = DownloadSummary()
         webpage_url = result.raw.get("webpage_url") or result.url
         base_name = sanitize_filename(result.title or result.platform)

@@ -32,8 +32,8 @@ def unique_path(directory: Path, filename: str) -> Path:
 @dataclass
 class DownloadedFile:
     path: Path
-    label: str
-    size_bytes: int
+    label: str = ""
+    size_bytes: int = 0
     kind: str = "video"
 
 

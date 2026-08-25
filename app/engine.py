@@ -99,25 +99,48 @@ class ParseEngine:
             )
 
         from .parsers.douyin import DouyinParser
+        from .parsers.jm import JMParser
         self.douyin_parser = DouyinParser(proxy=self.proxy)
+        self.jm_parser = JMParser(proxy=self.proxy)
 
     def extract_links(self, text: str) -> list[str]:
-        """同步提取文本中的可解析链接（按出现顺序、去重）。"""
+        """同步提取文本中的可解析链接与 JM 标识符（按出现顺序、去重）。"""
+        from .parsers.jm import extract_all_jm_targets
         from .ydl import extract_all_urls
-        return extract_all_urls(text)
+
+        urls = extract_all_urls(text)
+        jm_targets = extract_all_jm_targets(text)
+
+        combined: list[str] = []
+        seen: set[str] = set()
+        for item in urls + jm_targets:
+            normalized = item.strip().lower()
+            if normalized not in seen:
+                seen.add(normalized)
+                combined.append(item.strip())
+        return combined
 
     async def parse_text(self, text: str) -> list[ParseResult]:
-        """解析文本中的所有链接。"""
+        """解析文本中的所有链接与漫画标识符。"""
         results: list[ParseResult] = []
         if not self.ydl_enabled or not self._ydl_engine:
             return results
 
         from .parsers.douyin import DouyinParser
-        from .ydl import extract_all_urls
-        urls = extract_all_urls(text)
+        from .parsers.jm import JMParser
+        urls = self.extract_links(text)
 
         async def parse_one(url: str) -> ParseResult:
-            # 1. 优先使用抖音专属解析器（无需 Cookie、支持无水印与图集）
+            # 1. 优先使用 JM 专属解析器（支持 jm123456、jm 123456、18comic 等）
+            if JMParser.can_parse(url):
+                try:
+                    jm_result = await self.jm_parser.parse(url)
+                    if jm_result:
+                        return jm_result
+                except Exception as exc:
+                    logger.debug("JM 解析器未能解析，转入兜底: %s", exc)
+
+            # 2. 优先使用抖音专属解析器（无需 Cookie、支持无水印与图集）
             if DouyinParser.can_parse(url):
                 try:
                     dy_result = await self.douyin_parser.parse(url)
@@ -126,7 +149,7 @@ class ParseEngine:
                 except Exception as exc:
                     logger.debug("抖音解析器未能解析，转入 yt-dlp 兜底: %s", exc)
 
-            # 2. yt-dlp 兜底
+            # 3. yt-dlp 兜底
             ydl_result, ydl_error = await asyncio.to_thread(
                 self._ydl_engine.extract, url)
             if ydl_result is None:

@@ -222,10 +222,10 @@ class DownloadService : Service() {
                     DownloadProgress(title, 0, 0, isFinished = true, isFailed = true, errorMsg = errMsg)
                 )
             } else {
-                val filesListPy = summary!!.get("files")?.asList() ?: emptyList()
+                val filesListPy = summary.get("files")?.asList() ?: emptyList()
                 val filePaths = filesListPy.mapNotNull { filePy ->
                     val tempPath = filePy?.get("path")?.toString() ?: return@mapNotNull null
-                    val kind = filePy?.get("kind")?.toString() ?: "video"
+                    val kind = filePy.get("kind")?.toString() ?: "video"
                     val tempFile = File(tempPath)
                     if (tempFile.exists()) {
                         saveFileToMediaStore(this@DownloadService, tempFile, kind)

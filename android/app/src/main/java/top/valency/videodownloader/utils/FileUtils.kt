@@ -82,7 +82,28 @@ fun saveFileToMediaStore(context: Context, tempFile: File, kind: String): String
     val fileName = tempFile.name
     val ext = tempFile.extension.lowercase()
 
+    if (tempFile.isDirectory) {
+        // 目录（如漫画图片文件夹）：直接复制到公共 Pictures/VideoDownloader 目录
+        try {
+            val publicDir = File(
+                android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
+                "VideoDownloader/$fileName"
+            ).apply { mkdirs() }
+            tempFile.copyRecursively(publicDir, overwrite = true)
+            // 扫描所有文件使系统相册可见
+            val files = publicDir.walkTopDown().filter { it.isFile }.map { it.absolutePath }.toList().toTypedArray()
+            if (files.isNotEmpty()) {
+                android.media.MediaScannerConnection.scanFile(context, files, null, null)
+            }
+            return publicDir.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return tempFile.absolutePath
+        }
+    }
+
     val actualKind = when (ext) {
+        "pdf" -> "pdf"
         "jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif" -> "image"
         "mp3", "m4a", "wav", "aac", "flac", "ogg", "opus" -> "audio"
         "mp4", "mkv", "webm", "avi", "mov", "flv", "3gp", "ts" -> "video"
@@ -90,6 +111,7 @@ fun saveFileToMediaStore(context: Context, tempFile: File, kind: String): String
     }
 
     val mimeType = when (ext) {
+        "pdf" -> "application/pdf"
         "mp4" -> "video/mp4"
         "mkv" -> "video/x-matroska"
         "webm" -> if (actualKind == "audio") "audio/webm" else "video/webm"
@@ -110,6 +132,7 @@ fun saveFileToMediaStore(context: Context, tempFile: File, kind: String): String
         "heic" -> "image/heic"
         "heif" -> "image/heif"
         else -> when (actualKind) {
+            "pdf" -> "application/pdf"
             "image" -> "image/jpeg"
             "audio" -> "audio/mpeg"
             "video" -> "video/mp4"
@@ -121,6 +144,7 @@ fun saveFileToMediaStore(context: Context, tempFile: File, kind: String): String
         "video" -> "Movies"
         "audio" -> "Music"
         "image" -> "Pictures"
+        "pdf" -> "Download"
         else -> "Download"
     }
     val subFolder = "VideoDownloader"

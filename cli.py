@@ -43,7 +43,8 @@ def _print_result(result, index: int = 0) -> None:
     if result.desc and result.desc.strip():
         print(f"    简介: {result.desc.strip()[:120]}")
     for item in result.items:
-        print(f"    {item.kind} {item.index}: {item.urls[0] if item.urls else '(无直链)'}")
+        display_text = item.name or (item.urls[0] if item.urls else '(无直链)')
+        print(f"    {item.kind} {item.index}: {display_text}")
     if not result.has_media:
         print("    (无可用媒体直链)")
     print(f"    链接: {result.url}")

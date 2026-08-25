@@ -16,7 +16,9 @@ data class ParseResultUi(
     val url: String,
     val platform: String,
     val title: String,
-    val durationText: String,
+    val author: String = "",
+    val desc: String = "",
+    val durationText: String = "",
     val items: List<MediaItemUi>,
     val coverUrl: String
 )
