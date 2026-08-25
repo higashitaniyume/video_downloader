@@ -88,6 +88,10 @@ chaquopy {
         pip {
             install("yt-dlp>=2025.1.26")
             install("aiohttp>=3.10.0")
+            install("requests>=2.31.0")
+            install("pillow>=10.0.0")
+            install("pycryptodome>=3.20.0")
+            install("pyyaml>=6.0")
         }
     }
 }
@@ -145,6 +149,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("io.coil-kt:coil-compose:2.6.0")
     
     testImplementation("junit:junit:4.13.2")

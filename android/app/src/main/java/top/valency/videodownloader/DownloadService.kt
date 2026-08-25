@@ -41,6 +41,18 @@ object DownloadTracker {
         _progress.value = current
     }
 
+    fun remove(label: String) {
+        val current = _progress.value.toMutableMap()
+        current.remove(label)
+        _progress.value = current
+    }
+
+    fun clearFinished() {
+        val current = _progress.value.toMutableMap()
+        val filtered = current.filterValues { !it.isFinished && !it.isFailed }
+        _progress.value = filtered
+    }
+
     fun clear() {
         _progress.value = emptyMap()
     }
@@ -152,7 +164,7 @@ class DownloadService : Service() {
         val parseResult = parseResultClass.call(
             url,
             platform,
-            if (platform.contains("douyin", ignoreCase = true)) "douyin" else "yt-dlp",
+            if (platform.contains("douyin", ignoreCase = true)) "douyin" else if (platform.contains("jm", ignoreCase = true)) "jm" else "yt-dlp",
             title,
             "", // author
             "", // desc
@@ -167,10 +179,10 @@ class DownloadService : Service() {
         )
 
         // Progress callback to Kotlin
-        val progressCallback = { labelPy: Any, downloadedBytesPy: Any, totalBytesPy: Any ->
-            val label = labelPy.toString()
-            val downloadedBytes = downloadedBytesPy.toString().toLongOrNull() ?: 0L
-            val totalBytes = totalBytesPy.toString().toLongOrNull() ?: 0L
+        val progressCallback = { labelPy: Any?, downloadedBytesPy: Any?, totalBytesPy: Any? ->
+            val label = labelPy?.toString() ?: ""
+            val downloadedBytes = downloadedBytesPy?.toString()?.toLongOrNull() ?: 0L
+            val totalBytes = totalBytesPy?.toString()?.toLongOrNull() ?: 0L
             
             // Update notification
             val pct = if (totalBytes > 0) (downloadedBytes * 100 / totalBytes).toInt() else 0
